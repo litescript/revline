@@ -23,3 +23,6 @@ web_node_modules/
 .DS_Store
 .idea/
 .vscode/
+
+# Local env (do not commit)
+.env
