@@ -1,0 +1,17 @@
+FROM node:20-alpine
+WORKDIR /app
+
+# copy package manifests
+COPY package*.json ./
+
+# install dependencies
+RUN npm install
+
+# ensure vite is available
+RUN npm install -g vite
+
+# copy source
+COPY . .
+
+# default dev command
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]

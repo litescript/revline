@@ -1,0 +1,14 @@
+[project]
+name = "revline"
+version = "0.1.0"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2",
+  "orjson",
+]
+[project.optional-dependencies]
+dev = ["pytest","httpx","ruff","mypy","types-orjson"]
+[tool.mypy]
+python_version = "3.12"
+strict = true
