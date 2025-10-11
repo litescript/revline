@@ -1,0 +1,25 @@
+# Environment
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+
+# Node
+node_modules/
+dist/
+.cache/
+
+# Docker
+pg_data/
+web_node_modules/
+
+# Misc
+.DS_Store
+.idea/
+.vscode/
