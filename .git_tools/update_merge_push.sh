@@ -38,12 +38,31 @@ git add -A
 git reset .env || true
 git commit -m "Dev: sync + cleanup before merge" || echo "→ Nothing new to commit."
 
-# If tree is dirty (e.g., untracked or unstaged files), stash them
+# …keep the top of your script as-is…
+
+# If tree is dirty (e.g. untracked or unstaged files), stash them and record the ref
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "→ Working tree dirty; auto-stashing local changes..."
-  stash_ref=$(git stash push -u -m "revpush-autostash $(date +%F\ %T)")
-  stashed="1"
+  before_count=$(git stash list | wc -l | tr -d ' ')
+  git stash push -u -m "revpush-autostash $(date +%F\ %T)" >/dev/null
+  after_count=$(git stash list | wc -l | tr -d ' ')
+  if [[ "$after_count" -gt "$before_count" ]]; then
+    stash_ref=$(git stash list | head -1 | cut -d: -f1)   # e.g. "stash@{0}"
+    stashed="1"
+  else
+    stashed="0"
+    stash_ref=""
+  fi
 fi
+
+restore_stash() {
+  if [[ "$stashed" == "1" && -n "$stash_ref" ]]; then
+    echo "→ Restoring your local changes from stash $stash_ref..."
+    git stash pop "$stash_ref" || {
+      echo "NOTE: stash pop had conflicts; resolve and commit when ready."
+    }
+  fi
+}
 
 echo "→ Switching to dev..."
 git switch dev >/dev/null 2>&1 || git checkout -q dev
