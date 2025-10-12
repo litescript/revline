@@ -26,3 +26,5 @@ web_node_modules/
 
 # Local env (do not commit)
 .env
+.atlas_commit.json
+.atlas_sync.log
