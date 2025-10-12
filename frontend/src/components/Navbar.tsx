@@ -13,6 +13,7 @@ export default function Navbar() {
         <div className="flex gap-2">
           <NavLink to="/" className={linkCls} end>Dashboard</NavLink>
           <NavLink to="/health" className={linkCls}>Health</NavLink>
+          <NavLink to="/about" className={linkCls}>About</NavLink>
         </div>
       </nav>
     </header>
