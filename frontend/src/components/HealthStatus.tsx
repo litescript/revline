@@ -7,7 +7,7 @@ type HealthResponse =
 
 async function fetchHealth(): Promise<{ statusText: string; uptime?: number; version?: string }> {
   // Try common health endpoints in order
-  const paths = ["/health", "/api/health", "/api/v1/health"];
+  const paths = ["/api/health", "/health", "/api/v1/health"];
   let lastErr: unknown = null;
 
   for (const path of paths) {
