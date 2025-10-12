@@ -24,11 +24,11 @@ services:
 
   api:
     build:
-      context: ../backend
+      context: ../api                # was ../backend
       dockerfile: ../infra/dev.Dockerfile.api
     env_file: ../.env
     volumes:
-      - ../backend:/app
+      - ../api:/app                  # was ../backend:/app
     depends_on:
       db:
         condition: service_healthy
@@ -42,6 +42,7 @@ services:
   web:
     build:
       context: ../frontend
+    #  dockerfile: ../infra/dev.Dockerfile.web   # keep if you use it
       dockerfile: ../infra/dev.Dockerfile.web
     env_file: ../.env
     volumes:
