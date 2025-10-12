@@ -24,11 +24,11 @@ services:
 
   api:
     build:
-      context: ../api                # was ../backend
-      dockerfile: ../infra/dev.Dockerfile.api
-    env_file: ../.env
+      context: ./api
+      dockerfile: ./Dockerfile.dev   # <— moved here
+    env_file: ./.env
     volumes:
-      - ../api:/app                  # was ../backend:/app
+      - ./api:/app
     depends_on:
       db:
         condition: service_healthy
@@ -41,12 +41,12 @@ services:
 
   web:
     build:
-      context: ../frontend
-    #  dockerfile: ../infra/dev.Dockerfile.web   # keep if you use it
-      dockerfile: ../infra/dev.Dockerfile.web
-    env_file: ../.env
+      context: ./frontend
+    # dev container that runs Vite
+      dockerfile: ./Dockerfile.dev   # <— moved here
+    env_file: ./.env
     volumes:
-      - ../frontend:/app
+      - ./frontend:/app
       - web_node_modules:/app/node_modules
     ports:
       - "5173:5173"
@@ -54,6 +54,20 @@ services:
       - api
     command: >
       sh -c "npm ci || npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+
+  # Production-style static build served by nginx
+  frontend-prod:
+    build:
+      context: .                     # repo root (so Dockerfile can COPY infra/nginx/*)
+      dockerfile: ./frontend/Dockerfile
+    image: revline/frontend:0.1.0
+    container_name: revline-frontend
+    environment:
+      - API_URL=http://api:8000
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
 
 volumes:
   pg_data:
