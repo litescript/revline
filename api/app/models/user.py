@@ -2,7 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import String, func, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
-from ..core.db import Base
+from app.models.base import Base
 
 class User(Base):
     __tablename__ = "users"
