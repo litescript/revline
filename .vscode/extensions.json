@@ -1,0 +1,26 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-python.black-formatter",
+    "ms-python.isort",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+    "ms-azuretools.vscode-docker",
+    "ms-ossdata.vscode-postgresql",
+    "eamodio.gitlens",
+    "usernamehw.errorlens",
+    "streetsidesoftware.code-spell-checker",
+    "mikestead.dotenv",
+    "redhat.vscode-yaml",
+    "christian-kohler.path-intellisense",
+    "wix.vscode-import-cost",
+    "Gruntfuggly.todo-tree",
+    "humao.rest-client",
+    "ms-vscode-remote.remote-ssh"
+  ],
+  "unwantedRecommendations": [
+    "some.unwanted.extension"
+  ]
+}

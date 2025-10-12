@@ -1,22 +1,29 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
+
 from ..core.db import get_db
+from ..core.security import create_access_token, decode_access_token, hash_password, verify_password
 from ..models.user import User
 from ..schemas.user import UserCreate, UserLogin, UserOut
-from ..core.security import hash_password, verify_password, create_access_token, decode_access_token
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
 
 @router.post("/register", response_model=UserOut, status_code=201)
 def register(payload: UserCreate, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
-    user = User(email=payload.email, name=payload.name, password_hash=hash_password(payload.password))
+    user = User(
+        email=payload.email,
+        name=payload.name,
+        password_hash=hash_password(payload.password),
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
     return user
+
 
 @router.post("/login")
 def login(payload: UserLogin, db: Session = Depends(get_db)):
@@ -25,6 +32,7 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = create_access_token(sub=str(user.id))
     return {"access_token": token, "token_type": "bearer"}
+
 
 @router.get("/me", response_model=UserOut)
 def me(authorization: str = Header(None), db: Session = Depends(get_db)):

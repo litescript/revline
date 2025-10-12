@@ -1,6 +1,6 @@
 # Revline (MVP)
 
-Modern, modular dealership & shop-management platform.  
+Modern, modular dealership & shop-management platform.
 **Stack:** FastAPI + PostgreSQL + SQLAlchemy + Alembic · React (Vite, TanStack Query) · Docker Compose
 
 ## Dev — bring up the stack
@@ -9,13 +9,13 @@ Modern, modular dealership & shop-management platform.
 docker compose -f infra/docker-compose.yml up -d --build
 \`\`\`
 
-- **API:** http://localhost:8000/api/v1/health  
+- **API:** http://localhost:8000/api/v1/health
 - **Web:** http://localhost:5173  (Vite proxies `/api/*` → FastAPI)
 
 ## Layout
-- `api/` — FastAPI app (hot reload)  
-- `frontend/` — Vite app (hot reload, proxy enabled)  
-- `infra/` — Dockerfiles & Compose  
+- `api/` — FastAPI app (hot reload)
+- `frontend/` — Vite app (hot reload, proxy enabled)
+- `infra/` — Dockerfiles & Compose
 
 ## Env
 Create a `.env` in the repo root (**not committed**):

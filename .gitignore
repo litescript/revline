@@ -22,7 +22,11 @@ web_node_modules/
 # Misc
 .DS_Store
 .idea/
-.vscode/
+
+# VS Code — keep only shared configs
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 
 # Local env (do not commit)
 .env

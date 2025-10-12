@@ -1,0 +1,9 @@
+[flake8]
+max-line-length = 100
+# Some files intentionally import for side effects, or Alembic env ordering.
+per-file-ignores =
+    api/app/models/__init__.py:F401
+    api/app/core/db.py:F401
+    api/migrations/env.py:E402
+    # Forward references in SQLAlchemy models until we finish annotations clean-up
+    api/app/models/*.py:F821

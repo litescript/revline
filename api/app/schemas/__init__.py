@@ -1,6 +1,6 @@
 from .customer import CustomerCreate, CustomerOut
+from .ro import ROLineOut, ROOut
 from .vehicle import VehicleCreate, VehicleOut
-from .ro import ROOut, ROLineOut
 
 # optional
 try:
@@ -9,8 +9,12 @@ except Exception:
     PartCreate = PartOut = None  # ignore if not present
 
 __all__ = [
-    "CustomerCreate", "CustomerOut",
-    "VehicleCreate", "VehicleOut",
-    "ROOut", "ROLineOut",
-    "PartCreate", "PartOut",
+    "CustomerCreate",
+    "CustomerOut",
+    "VehicleCreate",
+    "VehicleOut",
+    "ROOut",
+    "ROLineOut",
+    "PartCreate",
+    "PartOut",
 ]

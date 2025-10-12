@@ -1,7 +1,10 @@
 from __future__ import annotations
-from sqlalchemy import Integer, String, Numeric
+
+from sqlalchemy import Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
+
 from .base import Base
+
 
 class Part(Base):
     __tablename__ = "parts"

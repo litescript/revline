@@ -1,5 +1,7 @@
 from datetime import datetime
+
 from pydantic import BaseModel
+
 
 class ROLineOut(BaseModel):
     id: int
@@ -11,6 +13,7 @@ class ROLineOut(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 class ROOut(BaseModel):
     id: int

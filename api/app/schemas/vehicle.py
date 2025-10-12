@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+
 class VehicleBase(BaseModel):
     customer_id: int
     vin: str
@@ -8,8 +9,10 @@ class VehicleBase(BaseModel):
     make: str | None = None
     model: str | None = None
 
+
 class VehicleCreate(VehicleBase):
     pass
+
 
 class VehicleOut(VehicleBase):
     id: int
