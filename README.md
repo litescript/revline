@@ -13,7 +13,7 @@ docker compose -f infra/docker-compose.yml up -d --build
 - **Web:** http://localhost:5173  (Vite proxies `/api/*` → FastAPI)
 
 ## Layout
-- `backend/` — FastAPI app (hot reload)  
+- `api/` — FastAPI app (hot reload)  
 - `frontend/` — Vite app (hot reload, proxy enabled)  
 - `infra/` — Dockerfiles & Compose  
 
