@@ -9,7 +9,8 @@ def main():
         email="admin@revline.local"
         if not db.query(User).filter(User.email==email).first():
             u=User(email=email, name="Admin", password_hash=hash_password("admin123"))
-            db.add(u); db.commit()
+            db.add(u)
+            db.commit()
             print("Seeded admin:", email, "password=admin123")
         else:
             print("Admin already exists")
