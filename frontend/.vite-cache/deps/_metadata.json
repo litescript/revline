@@ -1,55 +1,55 @@
 {
-  "hash": "9b0b4d3b",
-  "configHash": "adb90213",
+  "hash": "d9b3c0bb",
+  "configHash": "d88e7e6b",
   "lockfileHash": "c6ce06b9",
-  "browserHash": "ab518346",
+  "browserHash": "7a7f3460",
   "optimized": {
     "react": {
       "src": "../../node_modules/react/index.js",
       "file": "react.js",
-      "fileHash": "e0df3bce",
+      "fileHash": "aafaf16f",
       "needsInterop": true
     },
     "react-dom": {
       "src": "../../node_modules/react-dom/index.js",
       "file": "react-dom.js",
-      "fileHash": "e732fead",
+      "fileHash": "53657037",
       "needsInterop": true
     },
     "react/jsx-dev-runtime": {
       "src": "../../node_modules/react/jsx-dev-runtime.js",
       "file": "react_jsx-dev-runtime.js",
-      "fileHash": "39bdb12d",
+      "fileHash": "3a9739b1",
       "needsInterop": true
     },
     "react/jsx-runtime": {
       "src": "../../node_modules/react/jsx-runtime.js",
       "file": "react_jsx-runtime.js",
-      "fileHash": "1ff68ed9",
+      "fileHash": "921504c6",
       "needsInterop": true
     },
     "@tanstack/react-query": {
       "src": "../../node_modules/@tanstack/react-query/build/modern/index.js",
       "file": "@tanstack_react-query.js",
-      "fileHash": "5c7e5f5e",
+      "fileHash": "7affff2d",
       "needsInterop": false
     },
     "axios": {
       "src": "../../node_modules/axios/index.js",
       "file": "axios.js",
-      "fileHash": "fb689455",
+      "fileHash": "438f29b9",
       "needsInterop": false
     },
     "react-dom/client": {
       "src": "../../node_modules/react-dom/client.js",
       "file": "react-dom_client.js",
-      "fileHash": "715d31cf",
+      "fileHash": "e7c424db",
       "needsInterop": true
     },
     "react-router-dom": {
       "src": "../../node_modules/react-router-dom/dist/index.mjs",
       "file": "react-router-dom.js",
-      "fileHash": "d7785718",
+      "fileHash": "237b7151",
       "needsInterop": false
     }
   },
