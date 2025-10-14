@@ -1,19 +1,18 @@
 import { Route, Routes, Navigate } from "react-router-dom";
+import Layout from "./components/layout/Layout";
 import Home from "./pages/Home";
 import Health from "./pages/Health";
 import About from "./pages/About";
-import Navbar from "./components/Navbar";
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
-      <Navbar />
-      <Routes>
-        <Route path="/" element={<Home />} />
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={<Home />} />
         <Route path="/health" element={<Health />} />
         <Route path="/about" element={<About />} />
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </div>
+      </Route>
+    </Routes>
   );
 }

@@ -6,7 +6,7 @@ from ..core.security import create_access_token, decode_access_token, hash_passw
 from ..models.user import User
 from ..schemas.user import UserCreate, UserLogin, UserOut
 
-router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=UserOut, status_code=201)

@@ -1,21 +1,20 @@
-import { Link, NavLink } from "react-router-dom";
+import { NavLink } from "react-router-dom";
+
+const linkBase = "inline-flex items-center rounded-md px-3 py-2 text-sm font-medium";
+const linkInactive = "text-gray-600 hover:text-gray-900 hover:bg-gray-100";
+const linkActive = "text-gray-900 bg-gray-100";
 
 export default function Navbar() {
-  const linkCls = ({ isActive }: { isActive: boolean }) =>
-    `px-3 py-2 rounded-md text-sm font-medium ${
-      isActive ? "bg-gray-200 text-gray-900" : "text-gray-700 hover:bg-gray-100"
-    }`;
-
   return (
-    <header className="border-b bg-white">
-      <nav className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
-        <Link to="/" className="font-semibold">Revline</Link>
-        <div className="flex gap-2">
-          <NavLink to="/" className={linkCls} end>Dashboard</NavLink>
-          <NavLink to="/health" className={linkCls}>Health</NavLink>
-          <NavLink to="/about" className={linkCls}>About</NavLink>
-        </div>
-      </nav>
+    <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/90 backdrop-blur">
+      <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+        <NavLink to="/" className="text-base font-semibold tracking-tight">Revline</NavLink>
+        <nav className="flex items-center gap-1">
+          <NavLink to="/" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>Home</NavLink>
+          <NavLink to="/health" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>Health</NavLink>
+          <NavLink to="/about" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>About</NavLink>
+        </nav>
+      </div>
     </header>
   );
 }

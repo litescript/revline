@@ -22,16 +22,10 @@ web_node_modules/
 # Misc
 .DS_Store
 .idea/
-
-# VS Code — keep only shared configs
-.vscode/*
-!.vscode/settings.json
-!.vscode/extensions.json
+.vscode/
 
 # Local env (do not commit)
 .env
 .atlas_commit.json
 .atlas_sync.log
-
-# Vite cache
 frontend/.vite-cache/
