@@ -28,3 +28,4 @@ web_node_modules/
 .env
 .atlas_commit.json
 .atlas_sync.log
+frontend/.vite-cache/
