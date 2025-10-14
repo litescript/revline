@@ -5,7 +5,7 @@ from ..models.user import User
 from ..schemas.user import UserCreate, UserLogin, UserOut
 from ..core.security import hash_password, verify_password, create_access_token, decode_access_token
 
-router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=UserOut, status_code=201)
 def register(payload: UserCreate, db: Session = Depends(get_db)):
