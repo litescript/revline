@@ -64,9 +64,10 @@ services:
 
   # Production-style static build served by nginx
   frontend-prod:
+    profiles: ["prod"]              # ← add this line
     build:
-      context: ../frontend         # ← context is the frontend folder
-      dockerfile: Dockerfile       # ← path is relative to context
+      context: ..                   # ← switch context back to repo root
+      dockerfile: frontend/Dockerfile
     image: revline/frontend:0.1.0
     environment:
       - API_URL=http://api:8000
