@@ -1,3 +1,5 @@
+// frontend/src/lib/query/QueryProvider.tsx
+
 import { PropsWithChildren } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
