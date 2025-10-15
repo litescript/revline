@@ -11,6 +11,7 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 4173",
     "type-check": "tsc --noEmit",
+    "typecheck": "npm run type-check",
     "lint": "eslint .",
     "test": "vitest run --reporter=dot",
     "test:watch": "vitest"
