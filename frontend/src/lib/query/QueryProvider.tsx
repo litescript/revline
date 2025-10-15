@@ -1,9 +1,7 @@
-// frontend/src/lib/query/QueryProvider.tsx
-
 import { PropsWithChildren } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { queryClient } from "./queryClient";
+import { queryClient } from "../queryClient";  // ⬅️ fixed path
 import { Toaster } from "sonner";
 
 export function QueryProvider({ children }: PropsWithChildren) {
