@@ -1,10 +1,12 @@
 export type NormalizedError = {
   message: string;
   status?: number;
+  statusText?: string;
   code?: string | number;
   cause?: unknown;
   raw?: unknown;
 };
+
 
 export function normalizeError(err: unknown): NormalizedError {
   if (isFetchResponse(err)) {

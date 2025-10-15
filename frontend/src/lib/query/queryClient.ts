@@ -1,4 +1,4 @@
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, type QueryCacheNotifyEvent, type MutationCacheNotifyEvent } from '@tanstack/react-query';
 import { normalizeError } from './error';
 import { toast } from './toast';
 
@@ -18,20 +18,22 @@ export const queryClient = new QueryClient({
   },
 });
 
-queryClient.getQueryCache().subscribe((event) => {
-  if (event?.type === 'query' && event.action?.type === 'updated') {
-    const q = event.query;
-    if (q.state.status === 'error' && q.state.error) {
-      const { message } = normalizeError(q.state.error);
-      toast.error(message || 'Request failed');
-    }
+// Query errors
+queryClient.getQueryCache().subscribe((e: QueryCacheNotifyEvent) => {
+  if (e.type !== 'updated') return;
+  const { state } = e.query;
+  if (state.status === 'error' && state.error) {
+    const { message } = normalizeError(state.error);
+    toast.error(message || 'Request failed');
   }
 });
 
-queryClient.getMutationCache().subscribe((event) => {
-  if (event?.type === 'mutation' && event.action?.type === 'error') {
-    const err = (event as any).action?.error;
-    const { message } = normalizeError(err);
+// Mutation errors
+queryClient.getMutationCache().subscribe((e: MutationCacheNotifyEvent) => {
+  if (e.type !== 'updated') return;
+  const { state } = e.mutation;
+  if (state.status === 'error' && state.error) {
+    const { message } = normalizeError(state.error);
     toast.error(message || 'Action failed');
   }
 });
