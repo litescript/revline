@@ -2,24 +2,120 @@ name: Frontend CI
 
 on:
   push:
-    branches: [ dev, main ]
-    paths: [ "frontend/**" ]
+    branches: [dev, main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
   pull_request:
-    branches: [ dev, main ]
-    paths: [ "frontend/**" ]
+    branches: [dev, main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
 
+# Pin runner label to avoid ubuntu-latest drift
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  sync-guard:
+    name: Sync guard (dev ↔ main)
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request'
+    defaults:
+      run:
+        shell: bash
+        working-directory: .
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4 pin
+        with:
+            fetch-depth: 0
+
+      - name: Compare critical files between branches
+        run: |
+          set -euo pipefail
+          git fetch origin main:refs/remotes/origin/main || true
+          git fetch origin dev:refs/remotes/origin/dev || true
+
+          # Keep these identical between branches
+          mapfile -t FILES <<'EOF'
+          .github/workflows/frontend.yml
+          frontend/package.json
+          frontend/package-lock.json
+          frontend/.eslintrc.*
+          frontend/tsconfig.json
+          frontend/vite.config.*
+          frontend/.nvmrc
+          EOF
+
+          echo "🔍 Verifying sync for:"
+          printf ' - %s\n' "${FILES[@]}"
+
+          FAIL=0
+          for pattern in "${FILES[@]}"; do
+            for file in $(git ls-tree -r --name-only origin/dev | grep -E "$(echo "$pattern" | sed 's/\./\\./g;s/\*/.*/g')" || true); do
+              if ! git cat-file -e origin/main:"$file"; then
+                echo "::error:: Missing on main: $file"
+                FAIL=1
+                continue
+              fi
+              if ! git diff --quiet origin/main:"$file" origin/dev:"$file"; then
+                echo "::error:: Mismatch: $file differs between origin/main and origin/dev"
+                FAIL=1
+              fi
+            done
+          done
+
+          if [ "$FAIL" -ne 0 ]; then
+            echo "❌ Sync guard failed. Make listed files identical on dev and main."
+            exit 2
+          fi
+
+          echo "✅ Sync guard passed."
+
+  build-test:
+    name: Typecheck • Lint • Test • Build
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
+        shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repo
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4 pin
+
+      # Pin Node via .nvmrc and lock the setup-node action by SHA
+      - name: Use Node (from .nvmrc)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 pin
         with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-      - run: npm run build
+          node-version-file: 'frontend/.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Show toolchain
+        run: |
+          node -v
+          npm -v
+
+      - name: Install deps (clean, deterministic)
+        run: npm ci --no-audit --no-fund
+
+      - name: Type check
+        run: npm run type-check --if-present
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Test
+        env:
+          CI: "true"
+        run: npm test --if-present
+
+      - name: Build
+        env:
+          CI: "true"
+        run: npm run build
+
+      - name: Upload artifact (dist)
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4 pin
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          if-no-files-found: error
