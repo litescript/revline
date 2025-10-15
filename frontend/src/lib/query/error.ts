@@ -1,62 +1,62 @@
-import { toast } from "sonner";
-
 export type NormalizedError = {
-  status?: number;
-  code?: "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "SERVER_ERROR" | "NETWORK_ERROR";
   message: string;
-  details?: unknown;
+  status?: number;
+  code?: string | number;
   cause?: unknown;
+  raw?: unknown;
 };
 
-function isObj(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
-}
-function isFetchErrorLike(e: unknown): e is { status?: number; error?: unknown } {
-  return isObj(e) && "status" in e && "error" in e;
-}
-
 export function normalizeError(err: unknown): NormalizedError {
-  if (isFetchErrorLike(err)) {
-    const status = typeof normalizeError(err).status === "number" ? normalizeError(err).status : undefined;
-    const code =
-      status === 401 ? "UNAUTHORIZED" :
-      status === 403 ? "FORBIDDEN" :
-      status === 404 ? "NOT_FOUND" :
-      status && status >= 500 ? "SERVER_ERROR" : undefined;
-
-    const details = (err as any).error;
-    const detailMsg =
-      (typeof details === "string" && details) ||
-      (isObj(details) && typeof (details as any).detail === "string" && (details as any).detail) ||
-      undefined;
-
+  if (isFetchResponse(err)) {
     return {
+      message: `${normalizeError(err).status} ${normalizeError(err).statusText || 'Request failed'}`,
+      status: normalizeError(err).status,
+      raw: err,
+    };
+  }
+
+  if (isObject(err) && typeof (err as any).status === 'number') {
+    const anyErr = err as any;
+    const msg =
+      anyErr.message ??
+      anyErr.statusText ??
+      anyErr.error ??
+      anyErr.data?.message ??
+      'Request failed';
+    return {
+      message: String(msg),
+      status: anyErr.status,
+      code: anyErr.code ?? anyErr.data?.code,
+      cause: anyErr.cause,
+      raw: err,
+    };
+  }
+
+  if (err instanceof Error) {
+    const cause = (err as any).cause;
+    const status = typeof cause?.status === 'number' ? cause.status : undefined;
+    const code = cause?.code ?? (err as any).code;
+    return {
+      message: err.message || 'Unexpected error',
       status,
       code,
-      message: detailMsg ?? `Request failed${status ? ` (${status})` : ""}`,
-      details,
-      cause: err,
+      cause,
+      raw: err,
     };
   }
 
-  if (err instanceof TypeError && err.message.toLowerCase().includes("fetch")) {
-    return {
-      code: "NETWORK_ERROR",
-      message: "Network error — check connection or server availability.",
-      details: { fetch: true },
-      cause: err,
-    };
-  }
-
-  const message =
-    (isObj(err) && typeof (err as any).message === "string" && (err as any).message) ||
-    (typeof err === "string" ? err : "Something went wrong");
-  return { message, cause: err };
+  return { message: typeof err === 'string' ? err : 'Unknown error', raw: err };
 }
 
-export function onQueryError(err: unknown): void {
-  const n = normalizeError(err);
-  toast.error(n.message);
-  // eslint-disable-next-line no-console
-  console.error("[QueryError]", n);
+function isObject(x: unknown): x is Record<string, unknown> {
+  return !!x && typeof x === 'object';
+}
+
+function isFetchResponse(x: unknown): x is Response {
+  return (
+    isObject(x) &&
+    typeof (x as any).status === 'number' &&
+    typeof (x as any).headers === 'object' &&
+    'statusText' in (x as any)
+  );
 }

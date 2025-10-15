@@ -1,12 +1,14 @@
 import createClient from 'openapi-fetch';
-// import type { paths } from '@/__generated__/openapi'; // wire up when ready
+// import type { paths } from '@/__generated__/openapi'; // add when ready
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE?.replace(/\/+$/, '') || '/api';
+const API_BASE =
+  (import.meta as any).env?.VITE_API_BASE?.replace(/\/+$/, '') || '/api';
 
 export const client = createClient</* paths */ any>({
-  baseUrl: API_BASE, // '/api' in dev/prod proxies → '/api/v1/...'
+  baseUrl: API_BASE,
 });
 
 export async function getHealth() {
-  return client.GET('/v1/health'); // resolves to /api/v1/health
+  // resolves to /api/v1/health with baseUrl '/api'
+  return client.GET('/v1/health');
 }
