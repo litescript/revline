@@ -8,11 +8,9 @@ export const client = createClient</* paths */ any>({
   baseUrl: API_BASE,
 });
 
-// Back-compat alias (some files might import { api })
+// back-compat alias for places that import { api }
 export const api = client as any;
 
-// Helpers
 export async function getHealth() {
-  // Force 2nd arg to satisfy stricter signatures in some setups
-  return (client as any).GET('/v1/health', {} as any); // => /api/v1/health
+  return (client as any).GET('/v1/health', {} as any); // -> /api/v1/health
 }
