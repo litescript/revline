@@ -9,21 +9,30 @@ export default defineConfig(({ mode }) => {
     cacheDir: ".vite-cache",
     plugins: [react()],
     server: {
-      host: true,           // listen on 0.0.0.0 in container
+      host: true, // listen on 0.0.0.0 in container
       port: 5174,
       strictPort: true,
       proxy: {
-        // keep /api prefix; works in both dev + prod (nginx also expects /api/*) NOTE: TRYING OLD API SEARCH
         "^/api(/|$)": {
           target: inDocker ? "http://api:8000" : "http://localhost:8000",
           changeOrigin: true,
-          secure: false,
-        },
-      },
+          secure: false
+        }
+      }
     },
     preview: {
       port: 4173,
-      strictPort: true,
+      strictPort: true
     },
+    // ✅ Vitest config
+    test: {
+      environment: "jsdom",
+      globals: true,
+      setupFiles: ["./vitest.setup.ts"],
+      coverage: {
+        provider: "v8",
+        reporter: ["text", "lcov"]
+      }
+    }
   };
 });
