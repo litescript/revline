@@ -1,10 +1,12 @@
-import axios from "axios";
+import createClient from 'openapi-fetch';
+// import type { paths } from '@/__generated__/openapi'; // wire up when ready
 
-// Prefer relative base (works with nginx proxy). If explicitly set, use env.
-const envBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
-const baseURL = envBase ?? ""; // "" keeps requests relative to current origin
+const API_BASE = (import.meta as any).env?.VITE_API_BASE?.replace(/\/+$/, '') || '/api';
 
-export const api = axios.create({
-  baseURL,
-  headers: { "Content-Type": "application/json" }
+export const client = createClient</* paths */ any>({
+  baseUrl: API_BASE, // '/api' in dev/prod proxies → '/api/v1/...'
 });
+
+export async function getHealth() {
+  return client.GET('/v1/health'); // resolves to /api/v1/health
+}
