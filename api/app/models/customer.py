@@ -1,7 +1,10 @@
 from __future__ import annotations
-from sqlalchemy import Integer, String, Index
+
+from sqlalchemy import Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from .base import Base
+
 
 class Customer(Base):
     __tablename__ = "customers"
@@ -14,5 +17,6 @@ class Customer(Base):
 
     vehicles: Mapped[list["Vehicle"]] = relationship(back_populates="customer")
     ros: Mapped[list["RepairOrder"]] = relationship(back_populates="customer")
+
 
 Index("ix_customer_name", Customer.first_name, Customer.last_name)

@@ -1,16 +1,18 @@
+from app.core.db import get_db
+from app.models.vehicle import Vehicle
+from app.schemas.vehicle import VehicleCreate, VehicleOut
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from app.core.db import get_db
-from app.schemas.vehicle import VehicleCreate, VehicleOut
-from app.models.vehicle import Vehicle
 
 router = APIRouter(prefix="/vehicles", tags=["vehicles"])
+
 
 @router.get("/", response_model=list[VehicleOut])
 def list_vehicles(db: Session = Depends(get_db)):
     res = db.execute(select(Vehicle).limit(200))
     return res.scalars().all()
+
 
 @router.get("/by", response_model=list[VehicleOut])
 def find_vehicle(
@@ -25,6 +27,7 @@ def find_vehicle(
         stmt = stmt.where(Vehicle.plate == plate)
     res = db.execute(stmt.limit(50))
     return res.scalars().all()
+
 
 @router.post("/", response_model=VehicleOut, status_code=201)
 def create_vehicle(payload: VehicleCreate, db: Session = Depends(get_db)):

@@ -9,3 +9,6 @@ frontend/.vite
 frontend/.vite-cache
 .env
 **/*.log
+
+# Vite cache
+frontend/.vite-cache/

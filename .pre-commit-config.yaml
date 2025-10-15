@@ -1,0 +1,39 @@
+repos:
+  # --- Python formatting & linting ---
+  - repo: https://github.com/psf/black
+    rev: 25.9.0
+    hooks:
+      - id: black
+        language_version: python3
+
+  - repo: https://github.com/pycqa/isort
+    rev: 7.0.0
+    hooks:
+      - id: isort
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.3.0
+    hooks:
+      - id: flake8
+        args: [--max-line-length=100]
+
+  # --- Pre-commit's own hygiene hooks ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+
+  # --- Optional: frontend lint/format check (only if you want JS in the loop) ---
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v9.37.0
+    hooks:
+      - id: eslint
+        stages: [manual]
+        args: ["--fix"]
+        additional_dependencies: ["eslint", "eslint-config-prettier"]
+        files: ^(web/|frontend/).*\.([jt]sx?|vue)$
