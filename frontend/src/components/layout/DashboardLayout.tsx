@@ -2,7 +2,9 @@ import { NavLink } from "react-router-dom";
 import React from "react";
 
 const link =
-  "px-3 py-1.5 rounded-lg hover:bg-accent data-[active=true]:bg-accent data-[active=true]:font-semibold";
+  "px-3 py-1.5 rounded-lg hover:bg-accent";
+const linkActive = "bg-accent font-semibold";
+const linkInactive = "data-[active=true]:bg-accent data-[active=true]:font-semibold"; // kept if you still use data-attrs elsewhere
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -17,10 +19,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </span>
           </div>
           <nav className="flex items-center gap-2">
-            <NavLink to="/" className={({ isActive }) => link} data-active={({ isActive }) => isActive}>
+            <NavLink
+              to="/"
+              className={({ isActive }: { isActive: boolean }) =>
+                `${link} ${isActive ? linkActive : ""}`
+              }
+            >
               Dashboard
             </NavLink>
-            <NavLink to="/about" className={({ isActive }) => link} data-active={({ isActive }) => isActive}>
+            <NavLink
+              to="/about"
+              className={({ isActive }: { isActive: boolean }) =>
+                `${link} ${isActive ? linkActive : ""}`
+              }
+            >
               About
             </NavLink>
           </nav>
