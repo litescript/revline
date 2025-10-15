@@ -4,7 +4,7 @@ import React from "react";
 const link =
   "px-3 py-1.5 rounded-lg hover:bg-accent";
 const linkActive = "bg-accent font-semibold";
-const _linkInactive = "data-[active=true]:bg-accent data-[active=true]:font-semibold"; // kept if you still use data-attrs elsewhere
+//const _linkInactive = "data-[active=true]:bg-accent data-[active=true]:font-semibold"; // kept if you still use data-attrs elsewhere
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
