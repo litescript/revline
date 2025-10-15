@@ -34,33 +34,38 @@ jobs:
           git fetch origin main:refs/remotes/origin/main || true
           git fetch origin dev:refs/remotes/origin/dev || true
 
-          # Keep these identical between branches
-          mapfile -t FILES <<'EOF'
-          .github/workflows/frontend.yml
-          frontend/package.json
-          frontend/package-lock.json
-          frontend/.eslintrc.*
-          frontend/tsconfig.json
-          frontend/vite.config.*
-          frontend/.nvmrc
-          EOF
+          # Pin to actual files we use (no wildcards that create false "missing" warnings)
+          FILES=(
+            ".github/workflows/frontend.yml"
+            "frontend/package.json"
+            "frontend/package-lock.json"
+            "frontend/.nvmrc"
+            "frontend/.eslintrc.cjs"
+            "frontend/tsconfig.json"
+            "frontend/vite.config.ts"
+          )
 
           echo "🔍 Verifying sync for:"
           printf ' - %s\n' "${FILES[@]}"
 
           FAIL=0
-          for pattern in "${FILES[@]}"; do
-            for file in $(git ls-tree -r --name-only origin/dev | grep -E "$(echo "$pattern" | sed 's/\./\\./g;s/\*/.*/g')" || true); do
-              if ! git cat-file -e origin/main:"$file"; then
-                echo "::error:: Missing on main: $file"
-                FAIL=1
-                continue
-              fi
-              if ! git diff --quiet origin/main:"$file" origin/dev:"$file"; then
-                echo "::error:: Mismatch: $file differs between origin/main and origin/dev"
-                FAIL=1
-              fi
-            done
+          for file in "${FILES[@]}"; do
+            has_main=0; git cat-file -e origin/main:"$file" 2>/dev/null && has_main=1 || true
+            has_dev=0;  git cat-file -e origin/dev:"$file"  2>/dev/null && has_dev=1  || true
+
+            if [ $has_main -eq 0 ] || [ $has_dev -eq 0 ]; then
+              echo "::error:: Missing on $( [ $has_main -eq 0 ] && echo main || echo dev ): $file"
+              FAIL=1
+              continue
+            fi
+
+            if ! git diff --quiet origin/main:"$file" origin/dev:"$file"; then
+              echo "::group::Diff for $file"
+              git diff --color origin/main:"$file" origin/dev:"$file" || true
+              echo "::endgroup::"
+              echo "::error:: Mismatch: $file differs between origin/main and origin/dev"
+              FAIL=1
+            fi
           done
 
           if [ "$FAIL" -ne 0 ]; then
@@ -68,7 +73,8 @@ jobs:
             exit 2
           fi
 
-          echo "✅ Sync guard passed."
+          echo "✅ Sync guard passed — critical files aligned."
+
 
   build-test:
     name: Typecheck • Lint • Test • Build
