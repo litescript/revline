@@ -1,16 +1,74 @@
 server {
-  listen 80;
+  listen 80 default_server;
   server_name _;
 
   root /usr/share/nginx/html;
   index index.html;
 
-  # Frontend SPA: fall back to index.html for client routes
+  # === Security Headers (revline) ===
+  add_header X-Frame-Options "DENY" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()" always;
+  add_header Cross-Origin-Opener-Policy "same-origin" always;
+  add_header Cross-Origin-Resource-Policy "same-origin" always;
+  # For HTTPS deployments behind a reverse proxy or TLS terminator, enable HSTS:
+  # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+  # Content Security Policy — same-origin API via /api proxy
+  add_header Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'" always;
+
+  # === Static assets (hashed) — long-lived & immutable ===
+  location /assets/ {
+    # Caching
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+
+    # Repeat security headers (location-level overrides server-level)
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+    add_header Cross-Origin-Resource-Policy "same-origin" always;
+    add_header Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'" always;
+
+    try_files $uri =404;
+  }
+
+  # === HTML app shell — always fresh ===
+  location = /index.html {
+    add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+
+    # Repeat security headers
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+    add_header Cross-Origin-Resource-Policy "same-origin" always;
+    add_header Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'" always;
+  }
+
+  # Root request (/) should also be non-cached
+  location = / {
+    add_header Cache-Control "no-cache" always;
+
+    # Repeat security headers
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+    add_header Cross-Origin-Resource-Policy "same-origin" always;
+    add_header Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'" always;
+  }
+
+  # === Frontend SPA ===
   location / {
     try_files $uri $uri/ /index.html;
   }
 
-  # Proxy API to your backend (set API_URL in docker-compose)
+  # === API Proxy (same-origin) ===
   location /api/ {
     proxy_pass ${API_URL};
     proxy_set_header Host $host;
