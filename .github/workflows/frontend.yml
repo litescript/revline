@@ -1,23 +1,37 @@
 name: Frontend CI
 
+permissions:
+  contents: read
+
 on:
+  workflow_dispatch:
   push:
     branches: [dev, main]
     paths:
       - "frontend/**"
+      - "infra/**"               # NEW: trigger on infra changes (compose/nginx)
+      - "frontend/Dockerfile"    # NEW: trigger on prod Dockerfile edits
+      - "docs/**"                # NEW: trigger on any new docs
       - ".github/workflows/frontend.yml"
   pull_request:
     branches: [dev, main]
     paths:
       - "frontend/**"
+      - "infra/**"               # same here
+      - "frontend/Dockerfile"
+      - "docs/**"
       - ".github/workflows/frontend.yml"
 
-# Pin runner label to avoid ubuntu-latest drift
+concurrency:
+  group: frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+      # Pin runner label to avoid ubuntu-latest drift
 jobs:
   sync-guard:
     name: Sync guard (dev ↔ main)
     runs-on: ubuntu-24.04
-    if: github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' || github.event.pull_request.base.ref == 'main'
     defaults:
       run:
         shell: bash
@@ -43,6 +57,9 @@ jobs:
             "frontend/.eslintrc.cjs"
             "frontend/tsconfig.json"
             "frontend/vite.config.ts"
+            "infra/docker-compose.yml"                      # NEW
+            "infra/nginx/default.conf.template"             # NEW
+            "frontend/Dockerfile"                           # NEW
           )
 
           echo "🔍 Verifying sync for:"
@@ -77,6 +94,7 @@ jobs:
 
 
   build-test:
+    timeout-minutes: 15
     name: Typecheck • Lint • Test • Build
     runs-on: ubuntu-24.04
     defaults:
@@ -125,3 +143,56 @@ jobs:
           name: frontend-dist
           path: frontend/dist
           if-no-files-found: error
+
+  prod-headers:
+    timeout-minutes: 10
+    name: Prod Header Smoke-Test (Nginx on :8080)
+    runs-on: ubuntu-24.04
+    needs: build-test
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4 pin
+
+      - name: Create CI .env
+        run: |
+          cat > .env <<'ENV'
+          POSTGRES_USER=revline
+          POSTGRES_PASSWORD=revline
+          POSTGRES_DB=revline
+          API_HOST=0.0.0.0
+          API_PORT=8000
+          ENV
+
+      - name: Compose up (prod preview)
+        run: |
+          docker compose -f infra/docker-compose.yml --profile prod up -d --build frontend-prod
+          # brief wait for nginx to bind
+          for i in {1..20}; do
+            curl -sI http://localhost:8080 >/dev/null && break
+            sleep 0.5
+          done
+
+      - name: Header checks (HTML)
+        run: |
+          set -e
+          echo "---- HTML HEADERS ----"
+          curl -sI http://localhost:8080/ | tee /tmp/html.h | sed -n '1,40p'
+          grep -qi "content-security-policy:" /tmp/html.h
+          grep -qi "cross-origin-opener-policy: same-origin" /tmp/html.h
+          grep -qi "cross-origin-resource-policy: same-origin" /tmp/html.h
+          grep -qi "cache-control: no-cache" /tmp/html.h
+
+
+      - name: Header checks (one asset)
+        run: |
+          set -e
+          ASSET=$(curl -s http://localhost:8080/ | grep -oE '/assets/[a-zA-Z0-9._-]+\.js' | head -n1)
+          echo "Testing asset: $ASSET"
+          curl -sI "http://localhost:8080$ASSET" | grep -qi "cache-control: public, max-age=31536000, immutable"
+          curl -sI "http://localhost:8080$ASSET" | grep -qi "content-security-policy:"
+          curl -sI "http://localhost:8080$ASSET" | grep -qi "cross-origin-opener-policy: same-origin"
+          curl -sI "http://localhost:8080$ASSET" | grep -qi "cross-origin-resource-policy: same-origin"
+
+      - name: Compose down (cleanup)
+        if: always()
+        run: docker compose -f infra/docker-compose.yml --profile prod down -v
