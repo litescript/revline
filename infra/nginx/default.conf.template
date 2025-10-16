@@ -37,7 +37,7 @@ server {
 
   # === HTML app shell — always fresh ===
   location = /index.html {
-    add_header Cache-Control "no-cache" always;
+    add_header Cache-Control "no-store, no-cache, must-revalidate" always;
 
     # Repeat security headers
     add_header X-Frame-Options "DENY" always;
