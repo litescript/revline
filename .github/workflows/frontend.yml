@@ -153,6 +153,16 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4 pin
 
+      - name: Create CI .env
+        run: |
+          cat > .env <<'ENV'
+          POSTGRES_USER=revline
+          POSTGRES_PASSWORD=revline
+          POSTGRES_DB=revline
+          API_HOST=0.0.0.0
+          API_PORT=8000
+          ENV
+
       - name: Compose up (prod preview)
         run: |
           docker compose -f infra/docker-compose.yml --profile prod up -d --build frontend-prod
