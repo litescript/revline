@@ -180,7 +180,7 @@ jobs:
           grep -qi "content-security-policy:" /tmp/html.h
           grep -qi "cross-origin-opener-policy: same-origin" /tmp/html.h
           grep -qi "cross-origin-resource-policy: same-origin" /tmp/html.h
-          grep -qi "cache-control: no-cache" /tmp/html.h
+          grep -qi "cache-control: no-store, no-cache, must-revalidate" /tmp/html.h
 
 
       - name: Header checks (one asset)
