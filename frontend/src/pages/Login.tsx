@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { toast } from "sonner";
 
 export default function Login() {
   const { user, login } = useAuth();
@@ -28,7 +29,9 @@ export default function Login() {
       const to = location.state?.from?.pathname ?? "/dashboard";
       navigate(to, { replace: true });
     } catch (err: any) {
-      setError(err?.message || "Login failed");
+      const msg = err?.message || "Login failed";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
@@ -67,6 +70,10 @@ export default function Login() {
         >
           {busy ? "Signing in…" : "Sign in"}
         </button>
+        <p className="text-sm mt-2">
+          New here? <a className="underline" href="/register">Create an account</a>
+        </p>
+
       </form>
     </div>
   );

@@ -3,10 +3,12 @@ from typing import Any, Optional, Tuple
 import uuid
 import jwt
 from passlib.context import CryptContext
+from fastapi import Response, HTTPException
 
 from .config import settings
 
-# ---- Password hashing (unchanged) -------------------------------------------------
+
+# ---- Password hashing ------------------------------------------------------------
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -18,24 +20,20 @@ def verify_password(pw: str, pw_hash: str) -> bool:
     return pwd_ctx.verify(pw, pw_hash)
 
 
-# ---- Settings compatibility helpers ----------------------------------------------
-# Support either (jwt_alg, access_token_expire_minutes) or (jwt_algorithm, jwt_expire_minutes)
+# ---- Settings helpers ------------------------------------------------------------
 _ALG = getattr(settings, "jwt_alg", getattr(settings, "jwt_algorithm", "HS256"))
 _ACCESS_MIN = getattr(
     settings, "access_token_expire_minutes", getattr(settings, "jwt_expire_minutes", 60)
 )
-
-# Optional refresh settings (fallbacks if not present)
 _REFRESH_DAYS = getattr(settings, "refresh_token_expire_days", 7)
 
-# If your config provides timedeltas (access_token_ttl/refresh_token_ttl), prefer those:
 if hasattr(settings, "access_token_ttl"):
-    _ACCESS_TTL = int(getattr(settings, "access_token_ttl").total_seconds())
+    _ACCESS_TTL = int(settings.access_token_ttl.total_seconds())
 else:
     _ACCESS_TTL = int(timedelta(minutes=_ACCESS_MIN).total_seconds())
 
 if hasattr(settings, "refresh_token_ttl"):
-    _REFRESH_TTL = int(getattr(settings, "refresh_token_ttl").total_seconds())
+    _REFRESH_TTL = int(settings.refresh_token_ttl.total_seconds())
 else:
     _REFRESH_TTL = int(timedelta(days=_REFRESH_DAYS).total_seconds())
 
@@ -51,11 +49,8 @@ def _create_token(
     sub: str, ttl_seconds: int, token_type: str, jti: Optional[str] = None
 ) -> Tuple[str, str]:
     """
-    Returns (token, jti). Encodes standard claims:
-    - sub: subject (user identifier)
-    - type: "access" | "refresh"
-    - jti: unique token id for allow/deny listing
-    - iat/exp: issued-at / expiration (epoch seconds, UTC)
+    Returns (token, jti).
+    Encodes standard claims: sub, type, jti, iat, exp
     """
     jti = jti or str(uuid.uuid4())
     now = _now_ts()
@@ -70,10 +65,13 @@ def _create_token(
 
 
 def decode_token(token: str) -> dict[str, Any]:
-    return jwt.decode(token, _SECRET, algorithms=[_ALG])
+    try:
+        return jwt.decode(token, _SECRET, algorithms=[_ALG])
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 
-# ---- Public API: access / refresh creation ---------------------------------------
+# ---- Public API ------------------------------------------------------------------
 def create_access(sub: str) -> Tuple[str, str]:
     """Return (access_token, jti) with short TTL."""
     return _create_token(sub, _ACCESS_TTL, "access")
@@ -84,14 +82,37 @@ def create_refresh(sub: str) -> Tuple[str, str]:
     return _create_token(sub, _REFRESH_TTL, "refresh")
 
 
+# ---- Rotation helpers ------------------------------------------------------------
+def rotate_refresh(sub: str) -> Tuple[str, str]:
+    """
+    Generates a new refresh token for the same subject.
+    Returns (refresh_token, jti).
+    """
+    return _create_token(sub, _REFRESH_TTL, "refresh")
+
+
+def set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    """
+    Attach refresh token as HttpOnly cookie on response.
+    Applies secure attributes based on environment settings.
+    """
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        samesite="strict" if settings.cookie_samesite.lower() == "strict" else "lax",
+        secure=settings.cookie_secure,
+        domain=settings.cookie_domain,
+        max_age=_REFRESH_TTL,
+        path="/api/v1/auth",
+    )
+
+
 # ---- Backward compatibility shims ------------------------------------------------
-# Your previous code used create_access_token() -> str and decode_access_token()
 def create_access_token(sub: str) -> str:
-    """Compatibility wrapper: returns only the encoded access token."""
     tok, _ = create_access(sub)
     return tok
 
 
 def decode_access_token(token: str) -> dict:
-    """Compatibility wrapper: decodes any token; callers formerly passed only access tokens."""
     return decode_token(token)

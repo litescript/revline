@@ -29,3 +29,11 @@ web_node_modules/
 .atlas_commit.json
 .atlas_sync.log
 frontend/.vite-cache/
+
+# Archives (do not commit)
+*.tgz
+*.tar.gz
+*.zip
+/revline_atlas_fullsrc.tgz
+/revline_atlas_src.tgz
+/frontend/revline_atlas.tgz

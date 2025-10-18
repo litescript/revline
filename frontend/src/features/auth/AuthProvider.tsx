@@ -18,6 +18,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // ---- Internal helpers ----
   async function fetchMe() {
     const res = await apiFetch("/auth/me");
     if (!res.ok) throw new Error("me failed");
@@ -25,37 +26,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(data);
   }
 
+  // ---- Login flow ----
   const login = async (email: string, password: string) => {
-  const res = await apiFetch("/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(txt || "Login failed");
-  }
+    const res = await fetch(`${import.meta.env.VITE_API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+      credentials: "include", // <-- make sure cookie is sent/received
+    });
 
-  const data = await res.json();
-  saveToken(data.access_token, data.expires_in);
-  await fetchMe();
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(txt || "Login failed");
+    }
 
-  toast.success(`Welcome back, ${email}!`);
-};
+    const data = await res.json();
+    saveToken(data.access_token, data.expires_in);
+    await fetchMe();
 
-const logout = async () => {
-  try {
-    await apiFetch("/auth/logout", { method: "POST" });
-  } catch {}
-  clearSession();
-  setUser(null);
+    toast.success(`Welcome back, ${email}!`);
+  };
 
-  toast(`Signed out`, {
-    description: "See you next time!",
-  });
-};
+  // ---- Logout ----
+  const logout = async () => {
+    try {
+      await apiFetch("/auth/logout", { method: "POST" });
+    } catch {}
+    clearSession();
+    setUser(null);
+    toast(`Signed out`, { description: "See you next time!" });
+  };
 
-
+  // ---- Refresh user manually (e.g., from UI) ----
   const refreshMe = async () => {
     await fetchMe();
   };
@@ -87,7 +89,7 @@ const logout = async () => {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
-
+ 
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
@@ -101,7 +103,6 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  // While we’re restoring session, don’t bounce to /login yet
   if (loading) {
     return (
       <div className="grid min-h-dvh place-items-center">
@@ -110,7 +111,6 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Not authenticated → send to /login and remember where we came from
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
