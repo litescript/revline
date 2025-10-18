@@ -14,7 +14,12 @@
     "allowJs": false,
     "resolveJsonModule": true,
     "types": ["vite/client", "vitest"],
-    "noEmit": true
+    "noEmit": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
   "include": ["src", "vite-env.d.ts"]
 }

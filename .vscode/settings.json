@@ -1,11 +1,28 @@
 {
   "editor.formatOnSave": true,
+
   "[python]": {
     "editor.defaultFormatter": "ms-python.black-formatter"
   },
+
   "python.analysis.typeCheckingMode": "basic",
+
+  // --- New: always use your project venv ---
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+
+  // Helpful analysis/UX
+  "python.analysis.autoImportCompletions": true,
+
+  // Your existing JS/TS prefs
   "isort.args": ["--profile", "black"],
   "eslint.validate": ["javascript", "javascriptreact", "typescript", "typescriptreact"],
   "prettier.requireConfig": true,
-  "files.associations": { "*.env": "dotenv" }
+
+  "files.associations": {
+    "*.env": "dotenv"
+  },
+  "cSpell.words": [
+    "revline"
+  ]
 }

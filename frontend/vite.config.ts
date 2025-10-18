@@ -1,13 +1,19 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const inDocker = env.VITE_IN_DOCKER === "1"; // set in compose for the web container
 
   return {
-    cacheDir: ".vite-cache",
+    cacheDir: "node_modules/.vite-cache",
     plugins: [react()],
+    resolve: {
+      alias: {
+        "@": fileURLToPath(new URL("./src", import.meta.url)),
+      },
+    },
     server: {
       host: true, // listen on 0.0.0.0 in container
       port: 5174,
@@ -16,13 +22,13 @@ export default defineConfig(({ mode }) => {
         "^/api(/|$)": {
           target: inDocker ? "http://api:8000" : "http://localhost:8000",
           changeOrigin: true,
-          secure: false
-        }
-      }
+          secure: false,
+        },
+      },
     },
     preview: {
       port: 4173,
-      strictPort: true
+      strictPort: true,
     },
     // ✅ Vitest config
     test: {
@@ -31,8 +37,8 @@ export default defineConfig(({ mode }) => {
       setupFiles: ["./vitest.setup.ts"],
       coverage: {
         provider: "v8",
-        reporter: ["text", "lcov"]
-      }
-    }
+        reporter: ["text", "lcov"],
+      },
+    },
   };
 });
