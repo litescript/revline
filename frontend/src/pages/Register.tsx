@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { apiFetch, saveToken } from "@/lib/api/client";
 import { toast } from "sonner";
-import { useAuth } from "@/features/auth/AuthProvider"
+import { useAuth } from "@/features/auth/AuthProvider";
 
 type Form = { name: string; email: string; password: string };
 type Errors = Partial<Record<keyof Form | "general", string>>;
@@ -29,112 +28,106 @@ export default function RegisterPage() {
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     if (!validate()) return;
+
     setLoading(true);
     setErrors({});
     try {
-      const res = await apiFetch("/auth/register", {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // no credentials needed; backend only sets refresh on login/refresh
         body: JSON.stringify(form),
       });
 
       if (!res.ok) {
-        let msg = "Registration failed";
-        try {
-          const j = await res.json();
-          if (j?.detail) msg = String(j.detail);
-          else if (j?.message) msg = String(j.message);
-        } catch {
-          const t = await res.text().catch(() => "");
-          if (t) msg = t;
-        }
-        setErrors({ general: msg });
+        const msg = (await res.json().catch(() => null))?.detail ?? "Registration failed";
+        setErrors((e) => ({ ...e, general: msg }));
+        toast.error(msg);
         return;
       }
 
-      // ✅ Use AuthProvider’s login to set user and navigate
-      await login(form.email, form.password);
-      // login() already navigates to /dashboard and toasts “Signed in!”
-
-      toast.success("Account created. Signing you in…");
-
-      const loginRes = await apiFetch("/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: form.email, password: form.password }),
-      });
-      if (!loginRes.ok) {
-        toast.info("Please sign in.");
-        nav("/login");
-        return;
-      }
-      const data = await loginRes.json();
-      if (data?.access_token && typeof data.expires_in === "number") {
-        saveToken(data.access_token, data.expires_in);
-      }
+      // Auto-login after successful create
+      await login(form.email, form.password, { silent: true });
+      toast.success("Account created — you’re in.");
       nav("/dashboard");
+    } catch {
+      setErrors((e) => ({ ...e, general: "Network error — try again" }));
+      toast.error("Network error — try again");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-dvh grid place-items-center p-6">
-      <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-2xl p-6 border">
-        <h1 className="text-2xl font-semibold">Create your account</h1>
+    <div className="mx-auto max-w-sm py-10">
+      <h1 className="mb-6 text-2xl font-semibold">Create your account</h1>
 
-        {errors.general && <p className="text-red-600 text-sm">{errors.general}</p>}
+      {errors.general && (
+        <div className="mb-4 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert" aria-live="polite">
+          {errors.general}
+        </div>
+      )}
 
+      <form className="space-y-4" onSubmit={submit} noValidate>
         <div>
-          <label className="block text-sm mb-1">Name</label>
+          <label className="mb-1 block text-sm">Name</label>
           <input
             name="name"
             value={form.name}
             onChange={onChange}
-            className="w-full rounded-xl border p-2"
+            className={`w-full rounded-2xl border px-3 py-2 outline-none focus:ring ${
+              errors.name ? "border-red-400" : "border-gray-300"
+            }`}
             placeholder="Jane Doe"
-            aria-invalid={!!errors.name}
+            autoComplete="name"
           />
-          {errors.name && <p className="text-red-600 text-xs mt-1">{errors.name}</p>}
+          {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
         </div>
 
         <div>
-          <label className="block text-sm mb-1">Email</label>
+          <label className="mb-1 block text-sm">Email</label>
           <input
             name="email"
             type="email"
             value={form.email}
             onChange={onChange}
-            className="w-full rounded-xl border p-2"
-            placeholder="you@example.com"
-            aria-invalid={!!errors.email}
+            className={`w-full rounded-2xl border px-3 py-2 outline-none focus:ring ${
+              errors.email ? "border-red-400" : "border-gray-300"
+            }`}
+            placeholder="you@revline.dev"
+            autoComplete="email"
           />
-          {errors.email && <p className="text-red-600 text-xs mt-1">{errors.email}</p>}
+          {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
         </div>
 
         <div>
-          <label className="block text-sm mb-1">Password</label>
+          <label className="mb-1 block text-sm">Password</label>
           <input
             name="password"
             type="password"
             value={form.password}
             onChange={onChange}
-            className="w-full rounded-xl border p-2"
-            placeholder="••••••••"
-            aria-invalid={!!errors.password}
+            className={`w-full rounded-2xl border px-3 py-2 outline-none focus:ring ${
+              errors.password ? "border-red-400" : "border-gray-300"
+            }`}
+            placeholder="Minimum 8 characters"
+            autoComplete="new-password"
           />
-          {errors.password && <p className="text-red-600 text-xs mt-1">{errors.password}</p>}
+          {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
         </div>
 
         <button
           disabled={loading}
-          className="w-full rounded-2xl p-2 bg-black text-white disabled:opacity-50"
+          className="w-full rounded-2xl bg-black px-3 py-2 text-white disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? "Creating…" : "Create account"}
         </button>
 
         <p className="text-sm">
-          Already have an account? <Link className="underline" to="/login">Sign in</Link>
+          Already have an account?{" "}
+          <Link className="underline" to="/login">
+            Sign in
+          </Link>
         </p>
       </form>
     </div>

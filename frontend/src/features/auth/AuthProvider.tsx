@@ -7,7 +7,7 @@ export type User = { id: number; email: string; name: string };
 type AuthContextValue = {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, opts?: { silent?: boolean }) => Promise<void>;
   logout: () => Promise<void>;
   refreshMe: () => Promise<void>;
 };
@@ -27,25 +27,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   // ---- Login flow ----
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, opts?: { silent?: boolean }) => {
     const res = await fetch(`${import.meta.env.VITE_API_BASE}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ email, password }),
-      credentials: "include", // <-- make sure cookie is sent/received
     });
 
     if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(txt || "Login failed");
+      let msg = "Login failed";
+      try {
+        const ct = res.headers.get("content-type") || "";
+        if (ct.includes("application/json")) {
+          const j = await res.json();
+          msg = j?.detail ?? j?.message ?? msg;
+        } else {
+          const t = await res.text();
+          try {
+            const j = JSON.parse(t);
+            msg = j?.detail ?? j?.message ?? (t || msg);
+          } catch {
+            msg = t || msg;
+          }
+        }
+      } catch {
+        /* keep default msg */
+      }
+      throw new Error(msg);
     }
 
-    const data = await res.json();
-    saveToken(data.access_token, data.expires_in);
+    const { access_token, expires_in } = await res.json();
+    saveToken(access_token, expires_in);
     await fetchMe();
-
-    toast.success(`Welcome back, ${email}!`);
+    if (!opts?.silent) {
+      toast.success(`Welcome back, ${email}!`);
+    }
   };
+
 
   // ---- Logout ----
   const logout = async () => {

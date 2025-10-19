@@ -97,13 +97,21 @@ def set_refresh_cookie(response: Response, refresh_token: str) -> None:
     Applies secure attributes based on environment settings.
     """
     response.set_cookie(
-        key="refresh_token",
+        key="revline_refresh",
         value=refresh_token,
         httponly=True,
         samesite="strict" if settings.cookie_samesite.lower() == "strict" else "lax",
         secure=settings.cookie_secure,
         domain=settings.cookie_domain,
         max_age=_REFRESH_TTL,
+        path="/api/v1/auth",
+    )
+
+
+def clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key="revline_refresh",
+        domain=settings.cookie_domain,
         path="/api/v1/auth",
     )
 

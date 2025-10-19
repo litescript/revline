@@ -28,8 +28,8 @@ export default function Login() {
       await login(email, password);
       const to = location.state?.from?.pathname ?? "/dashboard";
       navigate(to, { replace: true });
-    } catch (err: any) {
-      const msg = err?.message || "Login failed";
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Login failed";
       setError(msg);
       toast.error(msg);
     } finally {
@@ -63,7 +63,11 @@ export default function Login() {
             autoComplete="current-password"
           />
         </div>
-        {error && <div className="text-sm text-red-600">{error}</div>}
+        {error && (
+          <p className="mt-2 text-sm text-red-600" role="alert" aria-live="polite">
+            {error}
+          </p>
+        )}
         <button
           disabled={busy}
           className="mt-2 w-full rounded-md border px-3 py-2 hover:bg-gray-100 disabled:opacity-60"
