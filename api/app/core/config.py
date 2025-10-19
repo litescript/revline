@@ -1,12 +1,16 @@
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from datetime import timedelta
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_API_DIR = _REPO_ROOT / "api"
 
 
 class Settings(BaseSettings):
     # 1. Core database + JWT
-    database_url: str = Field(alias="DATABASE_URL")
-    jwt_secret: str = Field(alias="JWT_SECRET")
+    database_url: str = Field(..., alias="DATABASE_URL")
+    jwt_secret: str = Field(..., alias="JWT_SECRET")
     jwt_algorithm: str = Field("HS256", alias="JWT_ALGORITHM")
     jwt_expire_minutes: int = Field(60, alias="JWT_EXPIRE_MINUTES")
 
@@ -29,9 +33,16 @@ class Settings(BaseSettings):
     def refresh_token_ttl(self) -> timedelta:
         return timedelta(days=self.refresh_token_expire_days)
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    # 5. Pydantic config: load .env automatically
+    model_config = SettingsConfigDict(
+        env_file=[
+            _REPO_ROOT / ".env",  # <- repo root
+            # _API_DIR / ".env",  # optional: api/.env if you ever add one
+            Path(".env"),  # optional: cwd fallback
+        ],
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]

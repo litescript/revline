@@ -8,6 +8,7 @@ import About from "@/pages/About";
 import LoginPage from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import { RequireAuth } from "@/features/auth/AuthProvider";
+import RegisterPage from "@/pages/Register"
 
 
 export default function App() {
@@ -31,6 +32,8 @@ export default function App() {
             </RequireAuth>
           }
         />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -10,6 +10,8 @@ from ..core.security import (
     decode_token,
     hash_password,
     verify_password,
+    set_refresh_cookie,
+    clear_refresh_cookie,
 )
 from ..core.config import settings
 from ..models.user import User
@@ -58,27 +60,6 @@ def _refresh_max_age() -> int:
     return int(days) * 24 * 3600
 
 
-def _set_refresh_cookie(resp: Response, refresh_token: str) -> None:
-    resp.set_cookie(
-        key="revline_refresh",
-        value=refresh_token,
-        max_age=_refresh_max_age(),
-        secure=bool(getattr(settings, "cookie_secure", False)),
-        httponly=True,
-        samesite=_normalize_samesite(getattr(settings, "cookie_samesite", "lax")),
-        domain=_normalize_domain(getattr(settings, "cookie_domain", None)),
-        path="/api/v1/auth",
-    )
-
-
-def _delete_refresh_cookie(resp: Response) -> None:
-    resp.delete_cookie(
-        key="revline_refresh",
-        domain=_normalize_domain(getattr(settings, "cookie_domain", None)),
-        path="/api/v1/auth",
-    )
-
-
 # ------------------------------
 # Register
 # ------------------------------
@@ -124,7 +105,7 @@ async def login(
     )
     await r.setex(f"refresh:{refresh_jti}", refresh_ttl, str(user.id))
 
-    _set_refresh_cookie(response, refresh_token)
+    set_refresh_cookie(response, refresh_token)
 
     # Keep original fields; add expires_in to help client cache TTL
     access_ttl = (
@@ -180,42 +161,38 @@ async def refresh(request: Request, response: Response, r: redis.Redis = Depends
     try:
         payload = decode_token(cookie)
     except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    if payload.get("type") != "refresh":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Wrong token type")
+    sub = payload.get("sub")
+    old_jti = payload.get("jti")
+    if not sub:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    jti = payload.get("jti")
-    user_id = await r.get(f"refresh:{jti}") if jti else None
-    if not user_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh revoked")
+    # Best-effort revoke the old refresh JTI
+    try:
+        if old_jti:
+            await r.delete(f"refresh:{old_jti}")
+    except Exception:
+        pass
 
-    # Rotate refresh
-    await r.delete(f"refresh:{jti}")
-    new_refresh, new_refresh_jti = create_refresh(sub=user_id)
+    # Issue new pair
+    access_token, access_ttl = create_access(sub)
+    refresh_token, refresh_jti = create_refresh(sub)
+
+    # Compute TTL like login()
     refresh_ttl = (
         int(getattr(settings, "refresh_token_ttl").total_seconds())
         if hasattr(settings, "refresh_token_ttl")
         else 7 * 24 * 3600
     )
-    await r.setex(f"refresh:{new_refresh_jti}", refresh_ttl, user_id)
-    _set_refresh_cookie(response, new_refresh)
 
-    # Issue new access
-    new_access, _ = create_access(sub=user_id)
-    access_ttl = (
-        int(getattr(settings, "access_token_ttl").total_seconds())
-        if hasattr(settings, "access_token_ttl")
-        else int(
-            getattr(
-                settings, "access_token_expire_minutes", getattr(settings, "jwt_expire_minutes", 60)
-            )
-            * 60
-        )
-    )
-    return {"access_token": new_access, "token_type": "bearer", "expires_in": access_ttl}
+    # Allowlist new refresh JTI
+    await r.setex(f"refresh:{refresh_jti}", refresh_ttl, sub)
+
+    # Send new refresh cookie
+    set_refresh_cookie(response, refresh_token)
+
+    return {"access_token": access_token, "token_type": "bearer", "expires_in": access_ttl}
 
 
 # ------------------------------
@@ -232,5 +209,5 @@ async def logout(request: Request, response: Response, r: redis.Redis = Depends(
                 await r.delete(f"refresh:{jti}")
         except Exception:
             pass
-    _delete_refresh_cookie(response)
+    clear_refresh_cookie(response)
     return {"ok": True}

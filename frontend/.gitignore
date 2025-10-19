@@ -3,3 +3,9 @@ dist
 .vite
 .env
 .env.local
+# Archives (do not commit)*.tgz
+*.tar.gz
+*.zip
+/revline_atlas_fullsrc.tgz
+/revline_atlas_src.tgz
+/frontend/revline_atlas.tgz
