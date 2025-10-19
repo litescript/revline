@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import auth, customers, vehicles, ros, search, stats
+from app.routers import meta as meta_router
 from app.core.db import Base, engine
 
 API_PREFIX = "/api/v1"
@@ -30,6 +31,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(meta_router.router, prefix="/api/v1")
 
 # Mount all routers under one versioned prefix
 app.include_router(auth.router, prefix=API_PREFIX)

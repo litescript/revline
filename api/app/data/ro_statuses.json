@@ -1,0 +1,146 @@
+[
+  {
+    "status_code": "tech_working",
+    "label": "Tech working on vehicle",
+    "role_owner": "technician",
+    "color": "blue"
+  },
+  {
+    "status_code": "parts_oil_request",
+    "label": "Parts Oil Request",
+    "role_owner": "parts",
+    "color": "purple"
+  },
+  {
+    "status_code": "pa_back_to_tech",
+    "label": "P&A request back to tech",
+    "role_owner": "parts",
+    "color": "purple"
+  },
+  {
+    "status_code": "parts_working",
+    "label": "Parts working on",
+    "role_owner": "parts",
+    "color": "purple"
+  },
+  {
+    "status_code": "pa_forward_to_advisor",
+    "label": "P&A request forward to advisor",
+    "role_owner": "parts",
+    "color": "purple"
+  },
+  {
+    "status_code": "ready_for_tech_review",
+    "label": "Ready for tech review",
+    "role_owner": "technician",
+    "color": "orange"
+  },
+  {
+    "status_code": "ready_for_advisor",
+    "label": "Ready for advisor",
+    "role_owner": "advisor",
+    "color": "orange"
+  },
+  {
+    "status_code": "waiter_ready_for_advisor",
+    "label": "WAITER! - Ready for advisor",
+    "role_owner": "advisor",
+    "color": "orange"
+  },
+  {
+    "status_code": "advisor_working",
+    "label": "Advisor working on",
+    "role_owner": "advisor",
+    "color": "blue"
+  },
+  {
+    "status_code": "customer_contacted_pending",
+    "label": "Customer contacted - Decision pending",
+    "role_owner": "advisor",
+    "color": "pink"
+  },
+  {
+    "status_code": "parts_enroute_to_tech",
+    "label": "Parts ENROUTE to tech",
+    "role_owner": "parts",
+    "color": "purple"
+  },
+  {
+    "status_code": "ready_for_named_review",
+    "label": "Ready for [Person] review",
+    "role_owner": "advisor",
+    "color": "orange"
+  },
+  {
+    "status_code": "recs_declined",
+    "label": "All recs declined",
+    "role_owner": "advisor",
+    "color": "red"
+  },
+  {
+    "status_code": "recs_approved_some",
+    "label": "Recs approved (1 or more)",
+    "role_owner": "advisor",
+    "color": "green"
+  },
+  {
+    "status_code": "vehicle_on_hold",
+    "label": "Vehicle on hold",
+    "role_owner": "advisor",
+    "color": "red"
+  },
+  {
+    "status_code": "vehicle_at_detail",
+    "label": "Vehicle is at detail/tint",
+    "role_owner": "advisor",
+    "color": "yellow"
+  },
+  {
+    "status_code": "all_repairs_complete",
+    "label": "All repairs complete",
+    "role_owner": "technician",
+    "color": "teal"
+  },
+  {
+    "status_code": "ready_for_customer",
+    "label": "Vehicle ready for customer",
+    "role_owner": "advisor",
+    "color": "gray"
+  },
+  {
+    "status_code": "request_foreman_review",
+    "label": "Request BMW Foreman review",
+    "role_owner": "foreman",
+    "color": "indigo"
+  },
+  {
+    "status_code": "request_named_foreman",
+    "label": "Request Foreman [Name] review",
+    "role_owner": "foreman",
+    "color": "indigo"
+  },
+  {
+    "status_code": "foreman_working_solution",
+    "label": "BMW Foreman working on a solution",
+    "role_owner": "foreman",
+    "color": "indigo"
+  },
+  {
+    "status_code": "ownercare_response",
+    "label": "OWNERCARE RESPONSE RECEIVED !!!",
+    "role_owner": "advisor",
+    "color": "indigo"
+  },
+  {
+    "status_code": "eta_request",
+    "label": "ETA request",
+    "role_owner": "advisor",
+    "color": "gray"
+  },
+  {
+    "status_code": "bmw_parts_req_to_mini",
+    "label": "BMW PARTS REQ TO MINI",
+    "role_owner": "parts",
+    "color": "purple"
+  }
+]

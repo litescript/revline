@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
 import { toast } from "sonner";
+import DashboardStats from "@/components/DashboardStats";
 
 export default function Dashboard() {
   const {
@@ -70,7 +71,7 @@ export default function Dashboard() {
       <p className="mt-2 text-sm text-muted-foreground">
         You’re authenticated — this page is protected by <code>RequireAuth</code>.
       </p>
-
+      <DashboardStats />
       <section className="mt-6 grid gap-4 md:grid-cols-2">
         <div className="rounded-2xl border p-4">
           <h2 className="mb-1 font-medium">Next steps</h2>
