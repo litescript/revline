@@ -1,20 +1,29 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI  # type: ignore
+from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 from app.routers import auth, customers, vehicles, ros, search, stats
 from app.routers import meta as meta_router
-from app.core.db import Base, engine
+from app.core.db import Base, engine, SessionLocal
+from app.core.seed_meta import seed_meta_if_empty
+from app.models import meta as _  # ensure models are imported so Base knows them
+
 
 API_PREFIX = "/api/v1"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Dev convenience: create tables if they don't exist.
-    # Replace with Alembic migrations in production.
+    # 1) Ensure tables exist (idempotent)
     Base.metadata.create_all(bind=engine)
+
+    # 2) Seed if empty
+    db = SessionLocal()
+    try:
+        seed_meta_if_empty(db)
+    finally:
+        db.close()
+
     yield
-    # optional: add shutdown cleanup here later
 
 
 app = FastAPI(
@@ -24,12 +33,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["set-cookie"],
 )
 
 app.include_router(meta_router.router, prefix="/api/v1")
@@ -41,6 +56,7 @@ app.include_router(vehicles.router, prefix=API_PREFIX)
 app.include_router(ros.router, prefix=API_PREFIX)
 app.include_router(search.router, prefix=API_PREFIX)
 app.include_router(stats.router, prefix=API_PREFIX)
+app.include_router(meta_router.router, prefix=API_PREFIX)
 
 
 @app.get(f"{API_PREFIX}/health")
