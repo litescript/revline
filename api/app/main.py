@@ -3,6 +3,7 @@ from fastapi import FastAPI  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 from app.routers import auth, customers, vehicles, ros, search, stats
 from app.routers import meta as meta_router
+from app.routers.ros import router as ros_router
 from app.core.db import Base, engine, SessionLocal
 from app.core.seed_meta import seed_meta_if_empty
 from app.models import meta as _  # ensure models are imported so Base knows them

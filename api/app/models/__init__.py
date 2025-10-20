@@ -8,3 +8,5 @@ from .ro import RepairOrder, ROLine  # noqa: F401
 # models
 from .user import User  # noqa: F401
 from .vehicle import Vehicle  # noqa: F401
+from .ro_status import ROStatus  # existing
+from .repair_order import RepairOrder
