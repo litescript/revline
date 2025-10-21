@@ -1,10 +1,19 @@
 // frontend/src/hooks/useActiveROs.ts
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { ActiveRO, ActiveROQuery, fetchActiveROs } from "@/api/ros";
+import { getRODetail, type RODetailDTO } from "@/lib/api/ros";
 
 type UseActiveROsOpts = ActiveROQuery & {
   enabled?: boolean;
 };
+
+export function useRODetail(id: string | number) {
+  return useQuery<RODetailDTO, Error>({
+    queryKey: ["ro-detail", id],
+    queryFn: () => getRODetail(id),
+    staleTime: 15_000,
+  });
+}
 
 export function useActiveROs(opts: UseActiveROsOpts) {
   const { owner = null, waiter = null, search = null, enabled = true } = opts;

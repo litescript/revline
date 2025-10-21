@@ -1,9 +1,10 @@
 // frontend/src/pages/ActiveROBoard.tsx
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useDebounce } from "use-debounce";
 import { useActiveROs } from "@/hooks/useActiveROs";
 import type { OwnerFilter } from "@/api/ros";
 import { Toaster, toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 function fmtDate(s: string) {
   try {
@@ -15,11 +16,45 @@ function fmtDate(s: string) {
 }
 
 const OWNER_OPTIONS: (OwnerFilter | "all")[] = ["all", "advisor", "technician", "parts", "foreman"];
+const LS_KEY = "active-ro-filters-v1";
+
+// Tailwind can't see `bg-${color}-100`, so map to explicit classes.
+const STATUS_COLOR_MAP: Record<string, string> = {
+  green: "bg-green-100 text-green-800",
+  amber: "bg-amber-100 text-amber-800",
+  blue: "bg-blue-100 text-blue-800",
+  purple: "bg-purple-100 text-purple-800",
+  red: "bg-red-100 text-red-800",
+  gray: "bg-gray-100 text-gray-800",
+};
 
 export default function ActiveROBoard() {
+  const navigate = useNavigate();
+
+  // ---------- filters (with localStorage hydrate/persist) ----------
   const [owner, setOwner] = useState<OwnerFilter | null>(null);
   const [waiter, setWaiter] = useState<boolean | null>(null);
   const [searchRaw, setSearchRaw] = useState("");
+
+  // hydrate once
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_KEY) || "{}";
+      const saved: { owner?: any; waiter?: any; search?: string } = JSON.parse(raw);
+      if (saved.owner !== undefined) setOwner(saved.owner);
+      if (saved.waiter !== undefined) setWaiter(saved.waiter);
+      if (saved.search !== undefined) setSearchRaw(saved.search);
+    } catch {
+      // ignore parse errors
+    }
+  }, []);
+
+
+  // persist on change
+  useEffect(() => {
+    localStorage.setItem(LS_KEY, JSON.stringify({ owner, waiter, search: searchRaw }));
+  }, [owner, waiter, searchRaw]);
+
   const [search] = useDebounce(searchRaw, 250);
 
   const qOwner = owner ?? null;
@@ -44,6 +79,25 @@ export default function ActiveROBoard() {
   return (
     <div className="p-6 space-y-4">
       <Toaster richColors />
+
+      {/* Legend */}
+      <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
+        <span className="inline-flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-green-500" /> Waiting
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-amber-500" /> In Progress
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-blue-500" /> QC
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-purple-500" /> Parts
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-gray-500" /> Other
+        </span>
+      </div>
 
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div className="flex flex-wrap items-end gap-3">
@@ -120,16 +174,25 @@ export default function ActiveROBoard() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="[&>td]:py-2 [&>td]:px-2 border-b hover:bg-gray-50">
+                <tr
+                  key={r.id}
+                  onClick={() => navigate(`/ros/${r.id}`)}
+                  onKeyDown={(e) => { if (e.key === "Enter") navigate(`/ros/${r.id}`); }}
+                  role="button"
+                  tabIndex={0}
+                  className="[&>td]:py-2 [&>td]:px-2 border-b hover:bg-gray-50 cursor-pointer"
+                >
                   <td className="font-medium">{r.ro_number}</td>
                   <td>{r.customer_name}</td>
                   <td>{r.vehicle_label}</td>
                   <td>
                     <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-${r.status.color}-100 text-${r.status.color}-800`}
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium normal-case ${
+                        STATUS_COLOR_MAP[r.status.color] ?? STATUS_COLOR_MAP.gray
+                      }`}
                       title={r.status.role_owner}
                     >
-                      {r.status.label}
+                      {r.status.label ?? "Unknown"}
                     </span>
                   </td>
                   <td>
@@ -148,7 +211,11 @@ export default function ActiveROBoard() {
             </tbody>
           </table>
 
-          {!rows.length && <div className="p-6 text-center text-muted-foreground">No Active ROs match your filters.</div>}
+          {!rows.length && (
+            <div className="p-6 text-center text-muted-foreground">
+              No Active ROs match your filters.
+            </div>
+          )}
         </div>
       )}
     </div>
