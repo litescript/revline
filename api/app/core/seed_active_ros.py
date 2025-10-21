@@ -3,7 +3,8 @@ from datetime import datetime, timedelta
 import random
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select  # func
+from sqlalchemy.exc import IntegrityError
 
 from app.models.customer import Customer
 from app.models.vehicle import Vehicle
@@ -42,39 +43,104 @@ MAKES = ["BMW", "MINI", "BMW", "BMW", "BMW", "MINI"]
 MODELS = ["X3 xDrive30i", "Cooper S", "330i", "i4 eDrive40", "X5 50i", "M340i", "X1", "530e"]
 
 
+# ---------- helpers: idempotent get-or-create ----------
+
+
+def _get_or_create_customer(
+    db: Session, *, email: str, first: str, last: str, phone: str | None
+) -> Customer:
+    existing = db.execute(select(Customer).where(Customer.email == email)).scalar_one_or_none()
+    if existing:
+        return existing
+    obj = Customer(first_name=first, last_name=last, email=email, phone=phone)
+    db.add(obj)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        obj = db.execute(select(Customer).where(Customer.email == email)).scalar_one()
+    return obj
+
+
+def _get_or_create_vehicle(
+    db: Session,
+    *,
+    vin: str,
+    year: int,
+    make: str,
+    model: str,
+    plate: str | None,
+    owner_id: int | None,
+) -> Vehicle:
+    existing = db.execute(select(Vehicle).where(Vehicle.vin == vin)).scalar_one_or_none()
+    if existing:
+        return existing
+    obj = Vehicle(
+        customer_id=owner_id,
+        vin=vin,
+        plate=plate,  # <-- use 'plate'
+        year=year,
+        make=make,
+        model=model,
+    )
+    db.add(obj)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        obj = db.execute(select(Vehicle).where(Vehicle.vin == vin)).scalar_one()
+    return obj
+
+
 def _ensure_min_customers_vehicles(db: Session, n: int = 12) -> list[tuple[Customer, Vehicle]]:
-    # materialize as lists to avoid Sequence typing complaints
+    # materialize current rows
     custs: list[Customer] = list(db.execute(select(Customer)).scalars())
     vehs: list[Vehicle] = list(db.execute(select(Vehicle)).scalars())
 
+    # --- ensure customers ---
+    # generate unique emails deterministically if we exceed the base combos
     while len(custs) < n:
         fn = random.choice(FIRST_NAMES)
         ln = random.choice(LAST_NAMES)
-        c = Customer(
-            first_name=fn,
-            last_name=ln,
-            email=f"{fn.lower()}.{ln.lower()}@example.com",
+        base_email = f"{fn.lower()}.{ln.lower()}@example.com"
+
+        email = base_email
+        suffix = 1
+        # if email exists, add +suffix before @
+        while db.execute(select(Customer.id).where(Customer.email == email)).first():
+            local, at, domain = base_email.partition("@")
+            email = f"{local}+{suffix}@{domain}"
+            suffix += 1
+
+        c = _get_or_create_customer(
+            db,
+            email=email,
+            first=fn,
+            last=ln,
             phone="555-555-1212",
         )
-        db.add(c)
-        db.flush()
         custs.append(c)
 
+    # --- ensure vehicles ---
     while len(vehs) < n:
-        owner = random.choice(custs)
+        owner = random.choice(custs) if custs else None
         year = random.randint(2015, 2025)
         make = random.choice(MAKES)
         model = random.choice(MODELS)
-        v = Vehicle(
-            customer_id=owner.id,
-            vin=f"TESTVIN{random.randint(100000,999999)}",
-            plate=None,
+        # VIN uniqueness: regenerate until free (short, cheap loop in dev)
+        vin = f"TESTVIN{random.randint(100000, 999999)}"
+        while db.execute(select(Vehicle.id).where(Vehicle.vin == vin)).first():
+            vin = f"TESTVIN{random.randint(100000, 999999)}"
+
+        v = _get_or_create_vehicle(
+            db,
+            vin=vin,
             year=year,
             make=make,
             model=model,
+            plate=None,  # keep None unless you want random plates
+            owner_id=owner.id if owner else None,
         )
-        db.add(v)
-        db.flush()
         vehs.append(v)
 
     db.commit()
@@ -82,7 +148,7 @@ def _ensure_min_customers_vehicles(db: Session, n: int = 12) -> list[tuple[Custo
 
 
 def seed_active_ros_if_empty(db: Session, min_rows: int = 12) -> None:
-    # if any RO exists, do nothing
+    # If any ROs already exist, do nothing (your original behavior)
     if db.execute(select(RepairOrder.id).limit(1)).first():
         return
 

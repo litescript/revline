@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { apiFetch, saveToken, clearSession, loadTokenFromStorage } from "@/lib/api/client";
 import { toast } from "sonner";
+import { http } from "@/lib/http";
 
 export type User = { id: number; email: string; name: string };
 
@@ -28,43 +29,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ---- Login flow ----
   const login = async (email: string, password: string, opts?: { silent?: boolean }) => {
-    const res = await fetch(`${import.meta.env.VITE_API_BASE}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ email, password }),
-    });
-
-    if (!res.ok) {
-      let msg = "Login failed";
-      try {
-        const ct = res.headers.get("content-type") || "";
-        if (ct.includes("application/json")) {
-          const j = await res.json();
-          msg = j?.detail ?? j?.message ?? msg;
-        } else {
-          const t = await res.text();
-          try {
-            const j = JSON.parse(t);
-            msg = j?.detail ?? j?.message ?? (t || msg);
-          } catch {
-            msg = t || msg;
-          }
-        }
-      } catch {
-        /* keep default msg */
+    // let the shared http() handle fetch, headers, and errors
+    const { access_token, expires_in } = await http<{ access_token: string; expires_in: number }>(
+      "/auth/login",
+      {
+        method: "POST",
+        body: { email, password },
       }
-      throw new Error(msg);
-    }
+    );
 
-    const { access_token, expires_in } = await res.json();
     saveToken(access_token, expires_in);
-    await fetchMe();
+
+    // fetch profile using the fresh token so we don't depend on apiFetch pick-up timing
+    const meData = await http<User>("/auth/me", { token: access_token });
+    setUser(meData);
+
     if (!opts?.silent) {
       toast.success(`Welcome back, ${email}!`);
     }
   };
-
 
   // ---- Logout ----
   const logout = async () => {
