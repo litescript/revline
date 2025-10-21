@@ -4,7 +4,18 @@ from sqlalchemy.orm import Session  # type: ignore
 from sqlalchemy import select, func  # type: ignore
 from app.models.meta import ROStatus, ServiceCategory
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"  # /app/app/data
+# Resolve data dir robustly for both layouts:
+#   a) /app/app/data  (repo: api/app/data)
+#   b) /app/data      (if the "app" package is flattened in container)
+_BASE = Path(__file__).resolve().parents[1]  # .../app
+_CANDIDATES = [_BASE / "data", _BASE.parent / "data"]
+for _d in _CANDIDATES:
+    if _d.exists():
+        DATA_DIR = _d
+        break
+else:
+    # fall back to repo-relative guess to help debugging
+    DATA_DIR = _BASE / "data"
 
 
 def _read_json(filename: str):
@@ -12,27 +23,14 @@ def _read_json(filename: str):
     return json.loads(fp.read_text(encoding="utf-8"))
 
 
-def seed_meta_if_empty(db: Session):
+def seed_meta_if_empty(db: Session) -> None:
     # RO statuses
-    ro_count = db.scalar(select(func.count()).select_from(ROStatus))
-    if not ro_count:
+    if db.execute(select(func.count(ROStatus.id))).scalar_one() == 0:
         rows = _read_json("ro_statuses.json")
-        for r in rows:
-            db.add(
-                ROStatus(
-                    status_code=r["status_code"],
-                    label=r["label"],
-                    role_owner=r["role_owner"],
-                    color=r["color"],
-                )
-            )
-
+        db.add_all([ROStatus(**r) for r in rows])
+        db.commit()
     # Service categories
-    sc_count = db.scalar(select(func.count()).select_from(ServiceCategory))
-    if not sc_count:
+    if db.execute(select(func.count(ServiceCategory.id))).scalar_one() == 0:
         rows = _read_json("service_categories.json")
-        for r in rows:
-            db.add(ServiceCategory(code=r["code"], label=r["label"]))
-
-    if (not ro_count) or (not sc_count):
+        db.add_all([ServiceCategory(**r) for r in rows])
         db.commit()
