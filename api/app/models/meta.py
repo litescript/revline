@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, UniqueConstraint  # type: ignore
-from app.core.db import Base
+from .base import Base  # ← import Base from local .base to avoid circulars
 
 
 class ROStatus(Base):

@@ -1,8 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends  # type: ignore
+from fastapi import APIRouter, HTTPException
 from pathlib import Path
-from app.core.db import SessionLocal
-from app.models.meta import ROStatus, ServiceCategory
-from sqlalchemy import select  # type: ignore
 import json
 
 router = APIRouter(prefix="/meta", tags=["meta"])
