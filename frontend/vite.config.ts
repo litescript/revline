@@ -16,13 +16,16 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: true, // listen on 0.0.0.0 in container
-      port: 5174,
+      port: Number(process.env.VITE_PORT) || 5173,
       strictPort: true,
+      // 👇 Proxy /api/* requests to FastAPI inside Docker or local backend.
+      // Keeps cookies & refresh flow same-origin for smoother auth in dev.
       proxy: {
         "^/api(/|$)": {
           target: inDocker ? "http://api:8000" : "http://localhost:8000",
           changeOrigin: true,
           secure: false,
+          rewrite: (path) => path.replace(/^\/api/, ""),
         },
       },
     },

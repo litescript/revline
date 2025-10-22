@@ -1,7 +1,7 @@
 // frontend/src/lib/api/client.ts
 type TokenBundle = { accessToken: string; expiresAt: number };
 const LS_KEY = "revline_token";
-const BASE = import.meta.env.VITE_API_BASE || "/api";
+const BASE = import.meta.env.VITE_API_BASE || "/api/v1";
 
 // Module-scoped session cache
 let accessToken: string | null = null;
