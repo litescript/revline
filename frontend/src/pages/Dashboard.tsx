@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api/client";
+import http from "@/lib/api/client";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
 import { toast } from "sonner";
 import DashboardStats from "@/components/DashboardStats";
@@ -18,7 +18,7 @@ export default function Dashboard() {
   } = useQuery({
     queryKey: ["/auth/me"],
     queryFn: async () => {
-      const res = await apiFetch("/auth/me");
+      const res = await http("/auth/me");
       if (!res.ok) {
         const txt = await res.text();
         throw new Error(`${res.status} ${txt || res.statusText}`);

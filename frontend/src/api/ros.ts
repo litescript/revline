@@ -1,5 +1,5 @@
 // frontend/src/api/ros.ts
-import axios from "axios";
+import http from "@/lib/api/client";
 
 export type OwnerFilter = "advisor" | "technician" | "parts" | "foreman";
 
@@ -7,7 +7,7 @@ export type ROStatusMeta = {
   status_code: string;
   label: string;
   role_owner: OwnerFilter;
-  color: string; // tailwind color name (e.g., "blue", "purple")
+  color: string;
 };
 
 export type ActiveRO = {
@@ -17,15 +17,11 @@ export type ActiveRO = {
   vehicle_label: string;
   advisor_name: string | null;
   tech_name: string | null;
-  opened_at: string;  // ISO
-  updated_at: string; // ISO
+  opened_at: string;
+  updated_at: string;
   is_waiter: boolean;
   status: ROStatusMeta;
 };
-
-const API_BASE =
-  import.meta.env.VITE_API_BASE ??
-  (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1");
 
 export type ActiveROQuery = {
   owner?: OwnerFilter | null;
@@ -39,7 +35,11 @@ export async function fetchActiveROs(q: ActiveROQuery): Promise<ActiveRO[]> {
   if (typeof q.waiter === "boolean") params.waiter = String(q.waiter);
   if (q.search) params.search = q.search;
 
-  const url = `${API_BASE}/ros/active`;
-  const res = await axios.get<ActiveRO[]>(url, { params, withCredentials: true });
-  return res.data;
+  const qs = new URLSearchParams(params).toString();
+  const res = await http(`/ros/active${qs ? `?${qs}` : ""}`);
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(t || `Failed to load active ROs (${res.status})`);
+  }
+  return res.json() as Promise<ActiveRO[]>;
 }

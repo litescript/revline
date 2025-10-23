@@ -1,10 +1,12 @@
+// frontend/vite.config.ts
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const inDocker = env.VITE_IN_DOCKER === "1"; // set in compose for the web container
+  // Accept both env names for flexibility with compose
+  const inDocker = (env.IN_DOCKER ?? env.VITE_IN_DOCKER ?? "0") === "1";
 
   return {
     cacheDir: "node_modules/.vite-cache",
@@ -18,14 +20,13 @@ export default defineConfig(({ mode }) => {
       host: true, // listen on 0.0.0.0 in container
       port: Number(process.env.VITE_PORT) || 5173,
       strictPort: true,
-      // 👇 Proxy /api/* requests to FastAPI inside Docker or local backend.
-      // Keeps cookies & refresh flow same-origin for smoother auth in dev.
+      // Proxy /api/* → FastAPI (preserve full /api/v1 path; NO rewrite)
       proxy: {
         "^/api(/|$)": {
           target: inDocker ? "http://api:8000" : "http://localhost:8000",
           changeOrigin: true,
           secure: false,
-          rewrite: (path) => path.replace(/^\/api/, ""),
+          // IMPORTANT: do not rewrite—backend expects /api/v1/*
         },
       },
     },

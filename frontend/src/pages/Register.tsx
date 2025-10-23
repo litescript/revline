@@ -1,133 +1,83 @@
+// frontend/src/pages/Register.tsx
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import http from "@/lib/api/client";
 import { useAuth } from "@/features/auth/AuthProvider";
 
 type Form = { name: string; email: string; password: string };
-type Errors = Partial<Record<keyof Form | "general", string>>;
 
-export default function RegisterPage() {
-  const nav = useNavigate();
+export default function Register() {
   const { login } = useAuth();
+  const navigate = useNavigate();
   const [form, setForm] = useState<Form>({ name: "", email: "", password: "" });
-  const [errors, setErrors] = useState<Errors>({});
   const [loading, setLoading] = useState(false);
 
-  const onChange = (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
-
-  const validate = () => {
-    const e: Errors = {};
-    if (!form.name.trim()) e.name = "Name is required";
-    if (!form.email.includes("@")) e.email = "Valid email required";
-    if (form.password.length < 8) e.password = "Minimum 8 characters";
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
-
-  const submit = async (ev: React.FormEvent) => {
-    ev.preventDefault();
-    if (!validate()) return;
-
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
     setLoading(true);
-    setErrors({});
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_BASE}/auth/register`, {
+      const res = await http("/auth/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // no credentials needed; backend only sets refresh on login/refresh
-        body: JSON.stringify(form),
+        body: form, // object allowed; http() will JSON-stringify
       });
-
       if (!res.ok) {
-        const msg = (await res.json().catch(() => null))?.detail ?? "Registration failed";
-        setErrors((e) => ({ ...e, general: msg }));
-        toast.error(msg);
-        return;
+        const text = await res.text();
+        throw new Error(text || `Register failed (${res.status})`);
       }
-
-      // Auto-login after successful create
+      toast.success("Account created");
       await login(form.email, form.password, { silent: true });
-      toast.success("Account created — you’re in.");
-      nav("/dashboard");
-    } catch {
-      setErrors((e) => ({ ...e, general: "Network error — try again" }));
-      toast.error("Network error — try again");
+      navigate("/dashboard", { replace: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Registration failed";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   return (
-    <div className="mx-auto max-w-sm py-10">
-      <h1 className="mb-6 text-2xl font-semibold">Create your account</h1>
-
-      {errors.general && (
-        <div className="mb-4 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert" aria-live="polite">
-          {errors.general}
-        </div>
-      )}
-
-      <form className="space-y-4" onSubmit={submit} noValidate>
+    <div className="p-4 max-w-md mx-auto">
+      <h1 className="text-2xl font-semibold mb-4">Create account</h1>
+      <form onSubmit={onSubmit} className="space-y-3">
         <div>
-          <label className="mb-1 block text-sm">Name</label>
+          <label className="block text-sm font-medium">Name</label>
           <input
-            name="name"
+            className="mt-1 w-full rounded border px-3 py-2"
             value={form.name}
-            onChange={onChange}
-            className={`w-full rounded-2xl border px-3 py-2 outline-none focus:ring ${
-              errors.name ? "border-red-400" : "border-gray-300"
-            }`}
-            placeholder="Jane Doe"
-            autoComplete="name"
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            required
           />
-          {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
         </div>
-
         <div>
-          <label className="mb-1 block text-sm">Email</label>
+          <label className="block text-sm font-medium">Email</label>
           <input
-            name="email"
+            className="mt-1 w-full rounded border px-3 py-2"
             type="email"
             value={form.email}
-            onChange={onChange}
-            className={`w-full rounded-2xl border px-3 py-2 outline-none focus:ring ${
-              errors.email ? "border-red-400" : "border-gray-300"
-            }`}
-            placeholder="you@revline.dev"
-            autoComplete="email"
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            autoComplete="username"
+            required
           />
-          {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
         </div>
-
         <div>
-          <label className="mb-1 block text-sm">Password</label>
+          <label className="block text-sm font-medium">Password</label>
           <input
-            name="password"
+            className="mt-1 w-full rounded border px-3 py-2"
             type="password"
             value={form.password}
-            onChange={onChange}
-            className={`w-full rounded-2xl border px-3 py-2 outline-none focus:ring ${
-              errors.password ? "border-red-400" : "border-gray-300"
-            }`}
-            placeholder="Minimum 8 characters"
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
             autoComplete="new-password"
+            required
           />
-          {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
         </div>
 
-        <button
-          disabled={loading}
-          className="w-full rounded-2xl bg-black px-3 py-2 text-white disabled:cursor-not-allowed disabled:opacity-60"
-        >
+        <button disabled={loading} className="w-full rounded border px-3 py-2">
           {loading ? "Creating…" : "Create account"}
         </button>
 
         <p className="text-sm">
-          Already have an account?{" "}
-          <Link className="underline" to="/login">
-            Sign in
-          </Link>
+          Already have an account? <Link className="underline" to="/login">Sign in</Link>
         </p>
       </form>
     </div>

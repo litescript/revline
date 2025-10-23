@@ -1,0 +1,23 @@
+# frontend/Dockerfile.prod
+
+# --- Build stage ---
+FROM node:20-alpine AS builder
+WORKDIR /app
+ENV CI=true
+COPY package*.json ./
+# prefer ci; fall back to install if lockfile missing
+RUN npm ci || npm install
+COPY . .
+# Ensure Vite builds for root path; adjust if you use a sub-path
+ARG VITE_BASE=/
+ENV VITE_BASE=$VITE_BASE
+RUN npm run build
+
+# --- Runtime stage (nginx) ---
+FROM nginx:alpine
+# Copy built assets
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# The nginx image will envsubst any files in /etc/nginx/templates
+# to /etc/nginx/conf.d at startup when NGINX_ENVSUBST_OUTPUT_DIR is set.
+# We’ll mount your default.conf.template at runtime via docker-compose.

@@ -1,12 +1,12 @@
 import { QueryClient } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api/client";
+import http from "@/lib/api/client";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       queryFn: async ({ queryKey }) => {
         const [path] = queryKey as [string, ...unknown[]];
-        const res = await apiFetch(path);
+        const res = await http(path);
         if (!res.ok) {
           const text = await res.text();
           throw new Error(text || `Request failed: ${res.status}`);
