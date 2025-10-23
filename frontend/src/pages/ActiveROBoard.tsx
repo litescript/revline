@@ -1,156 +1,135 @@
 // frontend/src/pages/ActiveROBoard.tsx
-import { useMemo, useState } from "react";
-import { useDebounce } from "use-debounce";
-import { useActiveROs } from "@/hooks/useActiveROs";
-import type { OwnerFilter } from "@/api/ros";
-import { Toaster, toast } from "sonner";
-
-function fmtDate(s: string) {
-  try {
-    const d = new Date(s);
-    return d.toLocaleString();
-  } catch {
-    return s;
-  }
-}
-
-const OWNER_OPTIONS: (OwnerFilter | "all")[] = ["all", "advisor", "technician", "parts", "foreman"];
+import React from "react";
+import { fetchActiveROs, ActiveRO, fetchROById, RODetail } from "@/api/ros";
+import type { ROStatus } from "@/hooks/useROStatuses";
+import StatusBadge from "@/components/StatusBadge";
 
 export default function ActiveROBoard() {
-  const [owner, setOwner] = useState<OwnerFilter | null>(null);
-  const [waiter, setWaiter] = useState<boolean | null>(null);
-  const [searchRaw, setSearchRaw] = useState("");
-  const [search] = useDebounce(searchRaw, 250);
+  const [rows, setRows] = React.useState<ActiveRO[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const qOwner = owner ?? null;
-  const qWaiter = waiter;
-  const qSearch = search ? search : null;
+  const [openId, setOpenId] = React.useState<number | null>(null);
+  const [detail, setDetail] = React.useState<Record<number, RODetail | null>>({});
+  const [detailLoading, setDetailLoading] = React.useState<Record<number, boolean>>({});
 
-  const { data, isLoading, isFetching, refetch, error } = useActiveROs({
-    owner: qOwner,
-    waiter: qWaiter,
-    search: qSearch,
-  });
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const data = await fetchActiveROs({});
+        if (!cancelled) setRows(data);
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load board");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const rows = useMemo(() => data ?? [], [data]);
-
-  const onRefresh = async () => {
-    const id = "ros-refresh";
-    await refetch();
-    toast.dismiss(id);
-    toast.success("Active ROs refreshed", { id });
+  const toggleRow = (id: number) => {
+    if (openId === id) {
+      setOpenId(null);
+      return;
+    }
+    setOpenId(id);
+    if (!detail[id]) {
+      setDetailLoading((s) => ({ ...s, [id]: true }));
+      fetchROById(id)
+        .then((d) => setDetail((s) => ({ ...s, [id]: d })))
+        .catch(() => setDetail((s) => ({ ...s, [id]: null }))) // remove unused var 'e'
+        .finally(() => setDetailLoading((s) => ({ ...s, [id]: false })));
+    }
   };
 
+  if (loading) return <div className="p-4">Loading active ROs…</div>;
+  if (error) return <div className="p-4 text-red-600">{error}</div>;
+
   return (
-    <div className="p-6 space-y-4">
-      <Toaster richColors />
+    <div className="p-4">
+      <h1 className="text-xl font-semibold mb-3">Active Repair Orders</h1>
+      <div className="divide-y border rounded">
+        {rows.map((r) => {
+          const isOpen = openId === r.id;
+          const d = detail[r.id];
+          const dLoading = detailLoading[r.id];
 
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col">
-            <label className="text-sm font-medium">Owner</label>
-            <select
-              className="border rounded-xl px-3 py-2"
-              value={owner ?? "all"}
-              onChange={(e) => {
-                const v = e.target.value as OwnerFilter | "all";
-                setOwner(v === "all" ? null : v);
-              }}
-            >
-              {OWNER_OPTIONS.map((o) => (
-                <option key={o} value={o}>
-                  {o === "all" ? "All" : o.charAt(0).toUpperCase() + o.slice(1)}
-                </option>
-              ))}
-            </select>
-          </div>
+          // Build a proper ROStatus object regardless of backend shape
+          const statusObj: ROStatus =
+            typeof r.status === "object"
+              ? r.status
+              : { status_code: r.status, label: r.status, role_owner: "advisor", color: "gray" };
 
-          <div className="flex items-center gap-2 mt-1">
-            <input
-              id="waiter"
-              type="checkbox"
-              className="size-4"
-              checked={waiter === true}
-              onChange={(e) => setWaiter(e.target.checked ? true : null)}
-            />
-            <label htmlFor="waiter" className="text-sm font-medium">
-              Waiter only
-            </label>
-          </div>
 
-          <div className="flex flex-col">
-            <label className="text-sm font-medium">Search</label>
-            <input
-              className="border rounded-xl px-3 py-2 w-64"
-              placeholder="RO #, customer, vehicle..."
-              value={searchRaw}
-              onChange={(e) => setSearchRaw(e.target.value)}
-            />
-          </div>
-        </div>
+          return (
+            <div key={r.id}>
+              <button
+                onClick={() => toggleRow(r.id)}
+                className="w-full text-left px-3 py-2 hover:bg-muted/40 flex items-center justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="font-medium">RO {r.ro_number}</span>
+                  <span className="opacity-70">{r.customer_name}</span>
+                  <span className="opacity-70">{r.vehicle_label}</span>
+                  <StatusBadge status={statusObj} />
+                  {r.is_waiter && (
+                    <span className="text-xs px-2 py-0.5 border rounded">Waiter</span>
+                  )}
+                </div>
+                <div className="text-sm opacity-60">
+                  {new Date(r.updated_at).toLocaleString()}
+                </div>
+              </button>
 
-        <div className="flex items-center gap-3">
-          <button
-            className="rounded-2xl px-4 py-2 border shadow-sm hover:shadow transition"
-            onClick={onRefresh}
-            disabled={isFetching}
-          >
-            {isFetching ? "Refreshing..." : "Refresh"}
-          </button>
-        </div>
+              {isOpen && (
+                <div className="bg-muted/20 px-4 py-3">
+                  {dLoading && <div className="text-sm">Loading details…</div>}
+                  {!dLoading && !d && (
+                    <div className="text-sm text-red-600">
+                      Failed to load details.
+                    </div>
+                  )}
+                  {!dLoading && d && (
+                    <div className="grid gap-2 text-sm">
+                      <div>
+                        <span className="font-medium">Customer:</span>{" "}
+                        {d.customer_name}
+                      </div>
+                      <div>
+                        <span className="font-medium">Vehicle:</span>{" "}
+                        {d.vehicle_label ?? "—"}
+                      </div>
+                      <div>
+                        <span className="font-medium">Status:</span>{" "}
+                        {typeof d.status === "string"
+                          ? d.status
+                          : d.status?.label ?? "—"}
+                      </div>
+                      <div>
+                        <span className="font-medium">Waiter:</span>{" "}
+                        {d.is_waiter ? "Yes" : "No"}
+                      </div>
+                      <div>
+                        <span className="font-medium">Updated:</span>{" "}
+                        {d.updated_at ?? "—"}
+                      </div>
+                      {d.notes && (
+                        <div>
+                          <span className="font-medium">Notes:</span> {d.notes}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
-
-      {error ? (
-        <div className="text-red-600">Failed to load: {(error as any)?.message ?? "Unknown error"}</div>
-      ) : isLoading && !rows.length ? (
-        <div className="text-muted-foreground">Loading Active ROs…</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="[&>th]:text-left [&>th]:py-2 [&>th]:px-2 border-b">
-                <th>RO #</th>
-                <th>Customer</th>
-                <th>Vehicle</th>
-                <th>Status</th>
-                <th>Waiter</th>
-                <th>Opened</th>
-                <th>Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="[&>td]:py-2 [&>td]:px-2 border-b hover:bg-gray-50">
-                  <td className="font-medium">{r.ro_number}</td>
-                  <td>{r.customer_name}</td>
-                  <td>{r.vehicle_label}</td>
-                  <td>
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-${r.status.color}-100 text-${r.status.color}-800`}
-                      title={r.status.role_owner}
-                    >
-                      {r.status.label}
-                    </span>
-                  </td>
-                  <td>
-                    {r.is_waiter ? (
-                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
-                        Waiter
-                      </span>
-                    ) : (
-                      <span className="text-gray-400">—</span>
-                    )}
-                  </td>
-                  <td>{fmtDate(r.opened_at)}</td>
-                  <td>{fmtDate(r.updated_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {!rows.length && <div className="p-6 text-center text-muted-foreground">No Active ROs match your filters.</div>}
-        </div>
-      )}
     </div>
   );
 }

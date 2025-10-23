@@ -1,52 +1,35 @@
 // frontend/src/lib/api/client.ts
 type TokenBundle = { accessToken: string; expiresAt: number };
+
 const LS_KEY = "revline_token";
-const BASE = import.meta.env.VITE_API_BASE || "/api";
-
-// Module-scoped session cache
-let accessToken: string | null = null;
-let expiresAt = 0; // epoch millis
-
-// Skew buffer so we refresh a bit early (avoids edge races)
+const BASE = "/api/v1";
 const SKEW_MS = 90_000;
 
-// -------------------- session helpers --------------------
+let accessToken: string | null = null;
+let expiresAt = 0;
+
 export function loadTokenFromStorage() {
   const raw = localStorage.getItem(LS_KEY);
   if (!raw) return;
-
-  // Happy path: JSON bundle { accessToken, expiresAt }
   try {
     const parsed = JSON.parse(raw) as TokenBundle;
-    if (
-      parsed &&
-      typeof parsed.accessToken === "string" &&
-      typeof parsed.expiresAt === "number"
-    ) {
+    if (parsed && typeof parsed.accessToken === "string" && typeof parsed.expiresAt === "number") {
       accessToken = parsed.accessToken;
       expiresAt = parsed.expiresAt;
       return;
     }
-  } catch {
-    // fall through to legacy check
-  }
-
-  // Legacy: bare JWT string (e.g., "eyJhbGciOi...") — migrate it once
+  } catch {}
   if (typeof raw === "string" && raw.includes(".")) {
     accessToken = raw;
-    // Give a short soft-ttl; refresh() will replace it anyway
     expiresAt = Date.now() + 5 * 60 * 1000;
     localStorage.setItem(LS_KEY, JSON.stringify({ accessToken, expiresAt }));
     return;
   }
-
-  // Unknown / corrupted: clear
   clearSession();
 }
 
 export function saveToken(at: string, ttlSec: number) {
   accessToken = at;
-  // Use the same skew here so apiFetch never sees a token as "valid" right at the edge.
   expiresAt = Date.now() + ttlSec * 1000 - SKEW_MS;
   localStorage.setItem(LS_KEY, JSON.stringify({ accessToken: at, expiresAt }));
 }
@@ -57,91 +40,91 @@ export function clearSession() {
   localStorage.removeItem(LS_KEY);
 }
 
-function haveValidToken(): boolean {
+function haveValidToken() {
   if (!accessToken || !expiresAt) return false;
-  // Token must be valid at least SKEW_MS into the future.
   return Date.now() + SKEW_MS < expiresAt;
 }
 
-// -------------------- refresh (single-flight) --------------------
 let refreshingPromise: Promise<boolean> | null = null;
-
 async function refreshOnce(): Promise<boolean> {
-  if (refreshingPromise) return refreshingPromise; // single-flight lock
-
+  if (refreshingPromise) return refreshingPromise;
   refreshingPromise = (async () => {
     try {
-      const res = await fetch(`${BASE}/auth/refresh`, {
-        method: "POST",
-        credentials: "include", // rely on HttpOnly cookie
-      });
+      const res = await fetch(`${BASE}/auth/refresh`, { method: "POST", credentials: "include" });
       if (!res.ok) {
-        if (import.meta.env.DEV) {
-          console.debug("[api] refresh failed:", res.status);
-        }
         clearSession();
         return false;
       }
       const data: { access_token: string; expires_in: number } = await res.json();
       saveToken(data.access_token, data.expires_in);
-      if (import.meta.env.DEV) console.debug("[api] refresh OK");
       return true;
-    } catch (err) {
-      if (import.meta.env.DEV) console.debug("[api] refresh network error:", err);
+    } catch {
       clearSession();
       return false;
     } finally {
-      refreshingPromise = null; // release lock
+      refreshingPromise = null;
     }
   })();
-
   return refreshingPromise;
 }
 
-// -------------------- main fetch with pre-refresh & 401 retry --------------------
-export async function apiFetch(path: string, init: RequestInit = {}) {
+function buildApiUrl(p: string): string {
+  if (!p) throw new Error("http(): path is required");
+  if (p.startsWith("http")) throw new Error("Absolute URLs are not allowed");
+  if (p.startsWith(BASE)) return p;
+  if (p.startsWith("/")) return `${BASE}${p}`;
+  return `${BASE}/${p}`;
+}
+
+async function fetchWithRefresh(path: string, init: RequestInit = {}): Promise<Response> {
   if (!accessToken) loadTokenFromStorage();
+  if (!haveValidToken()) await refreshOnce();
 
-  // Pre-refresh if token missing/expiring soon
-  if (!haveValidToken()) {
-    await refreshOnce(); // ignore result; still attempt call
-  }
-
-  const url = path.startsWith("http") ? path : `${BASE}${path}`;
+  const url = buildApiUrl(path);
   const headers = new Headers(init.headers || {});
-
-  // Auth endpoints that should NOT receive Authorization
   const isLogin = url.includes("/auth/login");
   const isRefresh = url.includes("/auth/refresh");
   const isLogout = url.includes("/auth/logout");
-
   const shouldAttachBearer = !isLogin && !isRefresh && !isLogout;
 
   if (shouldAttachBearer && haveValidToken()) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
 
-  if (import.meta.env.DEV) {
-    console.debug("[api] →", init.method ?? "GET", url);
-  }
-
   let res = await fetch(url, { ...init, headers, credentials: "include" });
 
-  if (import.meta.env.DEV) {
-    console.debug("[api] ←", res.status, url);
-  }
-
-  // On 401 (for non-auth endpoints), try a single refresh then retry once
   if (res.status === 401 && shouldAttachBearer) {
     const ok = await refreshOnce();
     if (ok && haveValidToken()) {
       headers.set("Authorization", `Bearer ${accessToken}`);
       res = await fetch(url, { ...init, headers, credentials: "include" });
-      if (import.meta.env.DEV) {
-        console.debug("[api] ← retry", res.status, url);
-      }
     }
   }
-
   return res;
 }
+
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+export type HttpOptions = Omit<RequestInit, "body"> & { body?: any; rawBody?: boolean };
+
+async function http(path: string, opts: HttpOptions = {}): Promise<Response> {
+  const method = ((opts.method || "GET") as HttpMethod).toUpperCase() as HttpMethod;
+  const isGetLike = method === "GET" || method === "HEAD";
+  const usingRaw = opts.rawBody === true;
+
+  const headers = new Headers(opts.headers || {});
+  const init: RequestInit = { ...opts, method, headers, credentials: "include" };
+
+  if (!isGetLike && !usingRaw) {
+    if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    if (typeof opts.body !== "undefined" && !(opts.body instanceof FormData)) {
+      (init as any).body = typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
+    }
+  }
+  return fetchWithRefresh(path, init);
+}
+
+// Optional shim until all callers are migrated
+export const apiFetch = (path: string, init: RequestInit = {}) => http(path, init);
+
+export { http };           // named
+export default http;       // default
