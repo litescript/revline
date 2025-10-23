@@ -1,7 +1,8 @@
+import http from "@/lib/api/client";
 // frontend/src/hooks/useUser.ts
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { isAuthenticated, logout } from "@/lib/auth";
-import { apiFetch, loadTokenFromStorage } from "@/lib/api/client";
+import {  loadTokenFromStorage } from "@/lib/api/client";
 
 export function useUser() {
   loadTokenFromStorage(); // make memory copy ready for /auth/me
@@ -11,7 +12,7 @@ export function useUser() {
     queryKey: ["/auth/me"],
     enabled: isAuthenticated(),
     queryFn: async () => {
-      const res = await apiFetch("/auth/me");
+      const res = await http("/auth/me");
       if (!res.ok) throw new Error("Failed to load user");
       return res.json();
     },

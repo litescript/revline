@@ -1,7 +1,8 @@
-import { apiFetch, saveToken, clearSession, loadTokenFromStorage } from "@/lib/api/client";
+import http from "@/lib/api/client";
+import {  saveToken, clearSession, loadTokenFromStorage } from "@/lib/api/client";
 
 export async function login(email: string, password: string) {
-  const res = await apiFetch("/auth/login", {
+  const res = await http("/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -12,7 +13,7 @@ export async function login(email: string, password: string) {
 }
 
 export async function logout() {
-  await apiFetch("/auth/logout", { method: "POST" });
+  await http("/auth/logout", { method: "POST" });
   clearSession();
 }
 

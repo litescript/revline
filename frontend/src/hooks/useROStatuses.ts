@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api/client";
+import http from "@/lib/api/client";
 
 export type ROStatus = {
   status_code: string;
@@ -12,7 +12,7 @@ export function useROStatuses() {
   return useQuery<ROStatus[]>({
     queryKey: ["/meta/ro-statuses"],
     queryFn: async () => {
-      const res = await apiFetch("/meta/ro-statuses");
+      const res = await http("/meta/ro-statuses");
       if (!res.ok) {
         const txt = await res.text();
         throw new Error(`${res.status} ${txt || res.statusText}`);
