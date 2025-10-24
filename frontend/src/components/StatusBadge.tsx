@@ -1,27 +1,36 @@
+// frontend/src/components/StatusBadge.tsx
 import React from "react";
 import type { ROStatus } from "@/hooks/useROStatuses";
 
-// Map semantic colors -> Tailwind classes (neutral/v4-friendly)
-const tone: Record<string, string> = {
-  blue:    "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-200 dark:border-blue-800/60",
-  purple:  "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-200 dark:border-purple-800/60",
-  orange:  "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-200 dark:border-orange-800/60",
-  pink:    "bg-pink-100 text-pink-700 border-pink-200 dark:bg-pink-900/30 dark:text-pink-200 dark:border-pink-800/60",
-  red:     "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-800/60",
-  yellow:  "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-200 dark:border-yellow-800/60",
-  teal:    "bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/30 dark:text-teal-200 dark:border-teal-800/60",
-  gray:    "bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-900/30 dark:text-gray-200 dark:border-gray-800/60",
-  indigo:  "bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-200 dark:border-indigo-800/60",
-};
-
 export default function StatusBadge({ status }: { status: ROStatus }) {
-  const cls = tone[status.color] ?? "bg-muted text-foreground border-border";
+  if (!status) return null;
+
+  // fallbacks
+  const color = status.color || "gray";
+  const label = status.label || status.status_code || "—";
+
+  // Map your known palette to soft bg + strong text
+  const colorMap: Record<string, string> = {
+    gray: "bg-gray-200 text-gray-800",
+    blue: "bg-blue-200 text-blue-900",
+    green: "bg-green-200 text-green-900",
+    yellow: "bg-yellow-200 text-yellow-900",
+    red: "bg-red-200 text-red-900",
+    purple: "bg-purple-200 text-purple-900",
+    orange: "bg-orange-200 text-orange-900",
+    indigo: "bg-indigo-200 text-indigo-900",
+  };
+
+  const cls =
+    colorMap[color] ??
+    "bg-gray-200 text-gray-900"; // fallback for any unexpected colors
+
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${cls}`}
-      title={`${status.label} — ${status.role_owner}`}
+      className={`inline-block px-2 py-[1px] rounded-full text-xs font-medium whitespace-nowrap ${cls}`}
+      title={label}
     >
-      <span className="font-medium">{status.label}</span>
+      {label}
     </span>
   );
 }
