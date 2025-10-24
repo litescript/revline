@@ -2,6 +2,7 @@
 from __future__ import annotations
 from datetime import datetime
 from pydantic import BaseModel
+from typing import Optional
 
 
 class ROStatusMeta(BaseModel):
@@ -22,3 +23,15 @@ class ActiveRODTO(BaseModel):
     updated_at: datetime
     is_waiter: bool
     status: ROStatusMeta
+
+
+class RODetailDTO(BaseModel):
+    id: int
+    ro_number: str
+    customer_name: str
+    vehicle_label: str
+    opened_at: datetime
+    updated_at: datetime
+    is_waiter: bool
+    status: ROStatusMeta
+    notes: Optional[str] = None

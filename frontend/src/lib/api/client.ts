@@ -128,3 +128,30 @@ export const apiFetch = (path: string, init: RequestInit = {}) => http(path, ini
 
 export { http };           // named
 export default http;       // default
+
+// JSON helper that uses the existing token/refresh flow
+export async function apiJson<T = unknown>(path: string, opts: HttpOptions = {}): Promise<T> {
+  const res = await http(path, opts);
+
+  if (!res.ok) {
+    // Try to surface API error details if present
+    const ctype = res.headers.get("content-type") || "";
+    if (ctype.includes("application/json")) {
+      const body = await res.json().catch(() => null) as any;
+      const msg = (body && (body.detail || body.message)) || `HTTP ${res.status}`;
+      throw new Error(msg);
+    }
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+
+  // Handle no-content or non-JSON gracefully
+  const ctype = res.headers.get("content-type") || "";
+  if (res.status === 204) return undefined as unknown as T;
+  if (!ctype.includes("application/json")) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || "Expected JSON response");
+  }
+
+  return res.json() as Promise<T>;
+}

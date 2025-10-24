@@ -1,66 +1,76 @@
 // frontend/src/api/ros.ts
 import http from "@/lib/api/client";
 
-export type OwnerFilter = "advisor" | "technician" | "parts" | "foreman";
-
-export type ROStatusMeta = {
-  status_code: string;
-  label: string;
-  role_owner: OwnerFilter;
-  color: string;
-};
-
+/** Summary row shown on Active RO board */
 export type ActiveRO = {
   id: number;
   ro_number: string;
   customer_name: string;
-  vehicle_label: string;
-  advisor_name: string | null;
-  tech_name: string | null;
-  opened_at: string;
-  updated_at: string;
+  vehicle_label: string; // e.g., "2021 BMW 430i"
+  status: string | { status_code?: string; label?: string; [k: string]: unknown };
   is_waiter: boolean;
-  status: ROStatusMeta;
+  updated_at: string; // ISO
+  opened_at?: string | null;
 };
 
-export type ActiveROQuery = {
-  owner?: OwnerFilter | null;
-  waiter?: boolean | null;
-  search?: string | null;
+/** Full detail for inline panel */
+export type ROLineItem = {
+  id: number;
+  code: string;
+  description: string;
+  qty: number;
+  hours?: number | null;
+  price?: number | null;
+  status?: string | null;
 };
-
-export async function fetchActiveROs(q: ActiveROQuery): Promise<ActiveRO[]> {
-  const params: Record<string, string> = {};
-  if (q.owner) params.owner = q.owner;
-  if (typeof q.waiter === "boolean") params.waiter = String(q.waiter);
-  if (q.search) params.search = q.search;
-
-  const qs = new URLSearchParams(params).toString();
-  const res = await http(`/ros/active${qs ? `?${qs}` : ""}`);
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(t || `Failed to load active ROs (${res.status})`);
-  }
-  return res.json() as Promise<ActiveRO[]>;
-}
 
 export type RODetail = {
   id: number;
   ro_number: string;
   customer_name: string;
-  vehicle_label?: string;
-  status?: string | ROStatusMeta;
-  is_waiter?: boolean;
-  updated_at?: string;
+  vehicle_label: string;
+  status: string | { status_code?: string; label?: string; [k: string]: unknown };
+  is_waiter: boolean;
+  updated_at: string;
   notes?: string | null;
-  // add more fields as your API returns them
+  advisor_name?: string | null;
+  technician_name?: string | null;
+  line_items?: ROLineItem[];
 };
 
-export async function fetchROById(id: number | string): Promise<RODetail> {
-  const res = await http(`/ros/${id}`);
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(t || `Failed to load RO ${id} (${res.status})`);
+/** Query params for active ROs (used by useActiveROs hook) */
+export type ActiveROQuery = {
+  owner?: string | null;   // e.g., "advisor" | "technician" | ...
+  waiter?: boolean | null; // filter by waiter flag
+  search?: string | null;  // free-text search
+  signal?: AbortSignal;    // optional abort
+};
+
+/**
+ * NOTE: your http() may return either a Response or already-parsed JSON.
+ * We handle both shapes without using generics.
+ */
+export async function fetchActiveROs(opts: ActiveROQuery = {}): Promise<ActiveRO[]> {
+  const { owner, waiter, search, signal } = opts;
+
+  const qs = new URLSearchParams();
+  if (owner != null && owner !== "") qs.set("owner", String(owner));
+  if (waiter != null) qs.set("waiter", String(waiter));
+  if (search != null && search !== "") qs.set("search", String(search));
+
+  const url = `/api/v1/ros/active${qs.toString() ? `?${qs.toString()}` : ""}`;
+  const res: any = await http(url, { method: "GET", signal } as any);
+
+  if (res && typeof res.json === "function") {
+    return (res as Response).json() as Promise<ActiveRO[]>;
   }
-  return res.json() as Promise<RODetail>;
+  return res as ActiveRO[];
+}
+
+export async function fetchROById(id: number): Promise<RODetail> {
+  const res: any = await http(`/api/v1/ros/${id}`, { method: "GET" } as any);
+  if (res && typeof res.json === "function") {
+    return (res as Response).json() as Promise<RODetail>;
+  }
+  return res as RODetail;
 }
