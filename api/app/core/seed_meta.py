@@ -1,7 +1,7 @@
 from pathlib import Path
 import json
-from sqlalchemy.orm import Session  # type: ignore
-from sqlalchemy import select, func  # type: ignore
+from sqlalchemy.orm import Session
+from sqlalchemy import select, func
 from app.models.meta import ROStatus, ServiceCategory
 
 # Resolve data dir robustly for both layouts:

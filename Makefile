@@ -16,3 +16,21 @@ prod-verify: prod-preview header-check
 
 prod-down:
 	@docker compose -f infra/docker-compose.yml --profile prod down -v
+
+.PHONY: typecheck
+typecheck:
+	mypy
+
+.PHONY: secscan
+secscan:
+	bandit -c .bandit.yml -r api/app
+
+.PHONY: ci
+ci: typecheck secscan
+	@echo "CI checks passed"
+
+.PHONY: prod-smoke
+prod-smoke:
+	$(MAKE) prod-preview
+	$(MAKE) header-check
+	$(MAKE) prod-down

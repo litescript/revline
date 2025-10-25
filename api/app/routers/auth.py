@@ -1,7 +1,10 @@
+import logging
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, Request, status
 from sqlalchemy.orm import Session
 from redis import asyncio as redis
-from typing import Optional, Literal, cast
+from typing import Optional, Literal, cast, Any
+from redis.exceptions import RedisError
+
 
 from ..core.db import get_db
 from ..core.security import (
@@ -18,30 +21,25 @@ from ..models.user import User
 from ..schemas.user import UserCreate, UserLogin, UserOut
 from ..services.redis import get_redis
 
-
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+logger = logging.getLogger(__name__)
 
-# ------------------------------
-# Cookie helpers (typed + normalized)
-# ------------------------------
+
 def _normalize_samesite(val: Optional[str]) -> Optional[Literal["lax", "strict", "none"]]:
     if val is None:
         return None
     v = val.strip().lower()
     if v in ("lax", "strict", "none"):
-        # cast to satisfy type checker Literal union
         return cast(Literal["lax", "strict", "none"], v)
-    # fallback to lax if invalid
-    return cast(Literal["lax"], "lax")
+    return "lax"
 
 
 def _normalize_domain(val: Optional[str]) -> Optional[str]:
-    # Convert empty string to None, keep real domains (e.g., "revline.dev")
     if not val:
         return None
     v = val.strip()
-    return v if v else None
+    return v or None
 
 
 def _access_max_age() -> int:
@@ -50,24 +48,22 @@ def _access_max_age() -> int:
     minutes = getattr(
         settings, "access_token_expire_minutes", getattr(settings, "jwt_expire_minutes", 60)
     )
-    return int(minutes) * 60
+    return minutes * 60
 
 
 def _refresh_max_age() -> int:
     if hasattr(settings, "refresh_token_ttl"):
         return int(settings.refresh_token_ttl.total_seconds())
     days = getattr(settings, "refresh_token_expire_days", 7)
-    return int(days) * 24 * 3600
+    return days * 24 * 3600
 
 
-# ------------------------------
-# Register
-# ------------------------------
 @router.post("/register", response_model=UserOut, status_code=201)
-def register(payload: UserCreate, db: Session = Depends(get_db)):
+def register(payload: UserCreate, db: Session = Depends(get_db)) -> UserOut:
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
+
     user = User(
         email=payload.email,
         name=payload.name,
@@ -76,138 +72,106 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    return user
+
+    return UserOut.model_validate(user)
 
 
-# ------------------------------
-# Login (returns access; sets refresh cookie)
-# ------------------------------
 @router.post("/login")
 async def login(
     payload: UserLogin,
     response: Response,
     db: Session = Depends(get_db),
     r: redis.Redis = Depends(get_redis),
-):
+) -> dict[str, Any]:
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # New flow: short-lived access + long-lived refresh cookie (rotatable)
-    access_token, _ = create_access(sub=str(user.id))
-    refresh_token, refresh_jti = create_refresh(sub=str(user.id))
+    access_token, _ = create_access(str(user.id))
+    refresh_token, refresh_jti = create_refresh(str(user.id))
 
-    # allowlist refresh JTI with TTL
-    refresh_ttl = (
-        int(getattr(settings, "refresh_token_ttl").total_seconds())
-        if hasattr(settings, "refresh_token_ttl")
-        else 7 * 24 * 3600
-    )
+    refresh_ttl = int(getattr(settings, "refresh_token_ttl", 7 * 24 * 3600))
     await r.setex(f"refresh:{refresh_jti}", refresh_ttl, str(user.id))
 
     set_refresh_cookie(response, refresh_token)
-
-    # Keep original fields; add expires_in to help client cache TTL
-    access_ttl = (
-        int(getattr(settings, "access_token_ttl").total_seconds())
-        if hasattr(settings, "access_token_ttl")
-        else int(
-            getattr(
-                settings, "access_token_expire_minutes", getattr(settings, "jwt_expire_minutes", 60)
-            )
-            * 60
-        )
-    )
+    access_ttl = _access_max_age()
     return {"access_token": access_token, "token_type": "bearer", "expires_in": access_ttl}
 
 
-# ------------------------------
-# Me
-# ------------------------------
 @router.get("/me", response_model=UserOut)
-def me(authorization: str = Header(None), db: Session = Depends(get_db)):
+def me(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+) -> UserOut:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
 
     token = authorization.split(" ", 1)[1].strip()
+    payload = decode_token(token)
 
-    try:
-        payload = decode_token(token)  # uses new helper
-        # If tokens carry a "type", enforce access-only here
-        t = payload.get("type")
-        if t is not None and t != "access":
-            raise HTTPException(status_code=401, detail="Wrong token type")
-        sub = payload.get("sub")
-        if not sub:
-            raise HTTPException(status_code=401, detail="Invalid token")
-    except Exception:
+    token_type = payload.get("type")
+    if token_type is not None and token_type != "access":
+        raise HTTPException(status_code=401, detail="Wrong token type")
+
+    sub = payload.get("sub")
+    if not sub:
         raise HTTPException(status_code=401, detail="Invalid token")
 
     user = db.get(User, int(sub))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return user
+
+    return UserOut.model_validate(user)
 
 
-# ------------------------------
-# Refresh (rotate refresh cookie; return new access)
-# ------------------------------
 @router.post("/refresh")
-async def refresh(request: Request, response: Response, r: redis.Redis = Depends(get_redis)):
+async def refresh(
+    request: Request, response: Response, r: redis.Redis = Depends(get_redis)
+) -> dict[str, Any]:
     cookie = request.cookies.get("revline_refresh")
     if not cookie:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No refresh cookie")
-
-    try:
-        payload = decode_token(cookie)
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-
+    payload = decode_token(cookie)
     sub = payload.get("sub")
-    old_jti = payload.get("jti")
     if not sub:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-
-    # Best-effort revoke the old refresh JTI
-    try:
-        if old_jti:
-            await r.delete(f"refresh:{old_jti}")
-    except Exception:
-        pass
-
-    # Issue new pair
-    access_token, access_ttl = create_access(sub)
+    old_jti = payload.get("jti")
+    if old_jti:
+        await r.delete(f"refresh:{old_jti}")
+    access_token, _ = create_access(sub)
     refresh_token, refresh_jti = create_refresh(sub)
-
-    # Compute TTL like login()
-    refresh_ttl = (
-        int(getattr(settings, "refresh_token_ttl").total_seconds())
-        if hasattr(settings, "refresh_token_ttl")
-        else 7 * 24 * 3600
-    )
-
-    # Allowlist new refresh JTI
-    await r.setex(f"refresh:{refresh_jti}", refresh_ttl, sub)
-
-    # Send new refresh cookie
+    await r.setex(f"refresh:{refresh_jti}", _refresh_max_age(), sub)
     set_refresh_cookie(response, refresh_token)
+    return {"access_token": access_token, "token_type": "bearer", "expires_in": _access_max_age()}
 
-    return {"access_token": access_token, "token_type": "bearer", "expires_in": access_ttl}
 
-
-# ------------------------------
-# Logout (revoke refresh; clear cookie)
-# ------------------------------
 @router.post("/logout")
-async def logout(request: Request, response: Response, r: redis.Redis = Depends(get_redis)):
+async def logout(
+    request: Request,
+    response: Response,
+    r: redis.Redis = Depends(get_redis),
+) -> dict[str, bool]:
     cookie = request.cookies.get("revline_refresh")
+
     if cookie:
         try:
             payload = decode_token(cookie)
             jti = payload.get("jti")
+
             if jti:
-                await r.delete(f"refresh:{jti}")
-        except Exception:
-            pass
+                # attempt to revoke the refresh token server-side
+                try:
+                    await r.delete(f"refresh:{jti}")
+                except Exception as e:
+                    # We failed to delete the token from Redis. Not fatal for logout,
+                    # but we should know about it.
+                    logger.warning("Failed to revoke refresh token %s during logout: %s", jti, e)
+
+        except Exception as e:
+            # token couldn't be decoded / malformed / expired / tampered
+            # Don't fail logout for that, but record it.
+            logger.debug("Invalid refresh token during logout: %s", e)
+
+    # Always clear the browser cookie so the client is logged out regardless
     clear_refresh_cookie(response)
     return {"ok": True}
