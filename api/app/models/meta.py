@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, UniqueConstraint  # type: ignore
+from sqlalchemy import Column, Integer, String, UniqueConstraint
 from .base import Base  # ← import Base from local .base to avoid circulars
 
 
