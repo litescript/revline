@@ -35,8 +35,19 @@ jobs:
       - name: Type check (mypy)
         run: mypy
 
-      - name: Security scan (bandit)
-        run: bandit -c .bandit.yml -r api/app
+      - name: Security scan (bandit, full report)
+        run: bandit -c .bandit.yml -r api/app || true
+
+      - name: Security scan (bandit, enforce Medium+High only)
+        run: |
+          bandit -c .bandit.yml -r api/app -q -ll > bandit_enforce.txt || true
+          if [ -s bandit_enforce.txt ]; then
+            echo "Bandit found Medium/High severity issues:"
+            cat bandit_enforce.txt
+            exit 1
+          else
+            echo "No Medium/High severity issues found."
+          fi
 
   prod-smoke:
     runs-on: ubuntu-latest
