@@ -90,7 +90,14 @@ async def login(
     access_token, _ = create_access(str(user.id))
     refresh_token, refresh_jti = create_refresh(str(user.id))
 
-    refresh_ttl = int(getattr(settings, "refresh_token_ttl", 7 * 24 * 3600))
+    ttl_val = getattr(settings, "refresh_token_ttl", 7 * 24 * 3600)
+    # if it's a timedelta, convert to seconds
+    if hasattr(ttl_val, "total_seconds"):
+        refresh_ttl = int(ttl_val.total_seconds())
+    else:
+        # assume it's already numeric (int/str)
+        refresh_ttl = int(ttl_val)
+
     await r.setex(f"refresh:{refresh_jti}", refresh_ttl, str(user.id))
 
     set_refresh_cookie(response, refresh_token)

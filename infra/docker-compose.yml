@@ -92,11 +92,11 @@ services:
     profiles: ["prod"]
     build:
       context: ..
-      dockerfile: frontend/Dockerfile
+      dockerfile: frontend/Dockerfile.prod
+      args:
+        VITE_BASE: /
+        VITE_API_BASE: /api/v1
     image: revline/frontend:0.1.0
-    environment:
-      # Point nginx/frontend at the prod API service by container name
-      - API_URL=http://api-prod:8000
     ports:
       - "8080:80"
     depends_on:

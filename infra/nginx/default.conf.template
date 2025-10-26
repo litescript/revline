@@ -75,7 +75,7 @@ server {
   # ---- API proxy (keep /api prefix; do not rewrite errors) ----
   location /api/ {
       # NO trailing slash -> forwards /api/... intact to upstream
-      proxy_pass http://api:8000;
+      proxy_pass http://api-prod:8000;
 
       proxy_http_version 1.1;
       proxy_redirect off;
