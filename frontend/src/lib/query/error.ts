@@ -1,64 +1,86 @@
-export type NormalizedError = {
-  message: string;
-  status?: number;
-  statusText?: string;
-  code?: string | number;
-  cause?: unknown;
-  raw?: unknown;
-};
+// frontend/src/lib/query/error.ts
 
-
-export function normalizeError(err: unknown): NormalizedError {
-  if (isFetchResponse(err)) {
-    return {
-      message: `${normalizeError(err).status} ${normalizeError(err).statusText || 'Request failed'}`,
-      status: normalizeError(err).status,
-      raw: err,
-    };
-  }
-
-  if (isObject(err) && typeof (err as any).status === 'number') {
-    const anyErr = err as any;
-    const msg =
-      anyErr.message ??
-      anyErr.statusText ??
-      anyErr.error ??
-      anyErr.data?.message ??
-      'Request failed';
-    return {
-      message: String(msg),
-      status: anyErr.status,
-      code: anyErr.code ?? anyErr.data?.code,
-      cause: anyErr.cause,
-      raw: err,
-    };
-  }
-
-  if (err instanceof Error) {
-    const cause = (err as any).cause;
-    const status = typeof cause?.status === 'number' ? cause.status : undefined;
-    const code = cause?.code ?? (err as any).code;
-    return {
-      message: err.message || 'Unexpected error',
-      status,
-      code,
-      cause,
-      raw: err,
-    };
-  }
-
-  return { message: typeof err === 'string' ? err : 'Unknown error', raw: err };
+/**
+ * AppError is the ONLY error shape UI code should ever have to deal with.
+ * Anything thrown from our API client, TanStack Query fetchers, auth helpers,
+ * etc. should ultimately be normalized into this.
+ */
+export interface AppError {
+  status: number;        // HTTP code, or 0 if we never got a response at all
+  code: string;          // machine-oriented code ("unauthorized", "network_error", etc.)
+  message: string;       // safe, human-readable summary for UI
+  retryable: boolean;    // hint for Query retry logic / buttons like "Retry"
 }
 
-function isObject(x: unknown): x is Record<string, unknown> {
-  return !!x && typeof x === 'object';
+/**
+ * Convert a low-level network failure (fetch threw before giving us Response)
+ * into a stable AppError.
+ *
+ * Examples:
+ * - API container down
+ * - DNS failure
+ * - CORS/network block
+ * - user lost Wi-Fi
+ */
+export function networkErrorToAppError(err: unknown): AppError {
+  return {
+    status: 0,
+    code: "network_error",
+    message:
+      err instanceof Error
+        ? err.message || "Network error"
+        : "Network error",
+    retryable: true
+  };
 }
 
-function isFetchResponse(x: unknown): x is Response {
+/**
+ * Convert a non-OK Response into an AppError.
+ *
+ * We try to parse backend JSON `{ code, message }`. If that doesn't work
+ * (HTML error page, empty body, etc.), we fall back to a generic message.
+ *
+ * retryable:
+ * - 5xx is usually retryable
+ * - 4xx defaults to not retryable unless it's something transient we decide later
+ */
+export async function responseToAppError(res: Response): Promise<AppError> {
+  let code = "http_error";
+  let message = `Request failed with status ${res.status}`;
+  let retryable = res.status >= 500;
+
+  try {
+    const data = await res.json();
+    if (data && typeof data === "object") {
+      if (typeof (data as any).code === "string") {
+        code = (data as any).code;
+      }
+      if (typeof (data as any).message === "string") {
+        message = (data as any).message;
+      }
+    }
+  } catch {
+    // ignore JSON parse failure, keep fallback message
+  }
+
+  return {
+    status: res.status,
+    code,
+    message,
+    retryable
+  };
+}
+
+/**
+ * Helper so we can safely branch on error types in shared handlers / UI.
+ */
+export function isAppError(e: unknown): e is AppError {
+  if (!e || typeof e !== "object") return false;
+  const maybe = e as Partial<AppError>;
   return (
-    isObject(x) &&
-    typeof (x as any).status === 'number' &&
-    typeof (x as any).headers === 'object' &&
-    'statusText' in (x as any)
+    typeof maybe.status === "number" &&
+    typeof maybe.code === "string" &&
+    typeof maybe.message === "string" &&
+    typeof maybe.retryable === "boolean"
   );
 }

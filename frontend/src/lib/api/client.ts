@@ -1,157 +1,232 @@
 // frontend/src/lib/api/client.ts
-type TokenBundle = { accessToken: string; expiresAt: number };
+
+import {
+  AppError,
+  networkErrorToAppError,
+  responseToAppError,
+} from "@/lib/query/error";
 
 const LS_KEY = "revline_token";
-const BASE = "/api/v1";
-const SKEW_MS = 90_000;
+const BASE = "/api/v1"; // single source of truth for backend base path
+const SKEW_MS = 90_000; // expire ~90s early to avoid edge-rollover
 
+export type TokenBundle = {
+  accessToken: string;
+  expiresAt: number; // epoch millis
+};
+
+// in-memory cache mirrors localStorage so we don't parse JSON constantly
 let accessToken: string | null = null;
 let expiresAt = 0;
 
+/* -------------------------------------------------
+ * Token lifecycle
+ * ------------------------------------------------- */
+
+/**
+ * Validate that a candidate bundle is well-formed and not already expired.
+ * We do NOT "try our best" with garbage here. If it's wrong, we drop session.
+ */
+function isValidBundle(maybe: unknown): maybe is TokenBundle {
+  if (!maybe || typeof maybe !== "object") return false;
+  const b = maybe as Partial<TokenBundle>;
+  if (typeof b.accessToken !== "string") return false;
+  if (typeof b.expiresAt !== "number") return false;
+  // must still be valid >5s from now
+  if (b.expiresAt <= Date.now() + 5000) return false;
+  return true;
+}
+
+/**
+ * Load token from localStorage into memory.
+ * Call this once on app start.
+ */
 export function loadTokenFromStorage() {
   const raw = localStorage.getItem(LS_KEY);
   if (!raw) return;
   try {
-    const parsed = JSON.parse(raw) as TokenBundle;
-    if (parsed && typeof parsed.accessToken === "string" && typeof parsed.expiresAt === "number") {
+    const parsed = JSON.parse(raw);
+    if (isValidBundle(parsed)) {
       accessToken = parsed.accessToken;
       expiresAt = parsed.expiresAt;
-      return;
+    } else {
+      // corrupted / stale / nonsense
+      clearSession();
     }
-  } catch {}
-  if (typeof raw === "string" && raw.includes(".")) {
-    accessToken = raw;
-    expiresAt = Date.now() + 5 * 60 * 1000;
-    localStorage.setItem(LS_KEY, JSON.stringify({ accessToken, expiresAt }));
+  } catch {
+    clearSession();
+  }
+}
+
+/**
+ * Save token from a login or refresh response.
+ * We apply an early-expire skew so we don't cut it too close.
+ */
+export function saveToken(token: string, ttlSec: number) {
+  accessToken = token;
+  expiresAt = Date.now() + ttlSec * 1000 - SKEW_MS;
+
+  // only persist if it still passes validation after skew
+  const bundle: TokenBundle = { accessToken, expiresAt };
+  if (!isValidBundle(bundle)) {
+    // if ttl was tiny or bogus, treat as invalid auth instead of storing junk
+    clearSession();
     return;
   }
-  clearSession();
+
+  localStorage.setItem(LS_KEY, JSON.stringify(bundle));
 }
 
-export function saveToken(at: string, ttlSec: number) {
-  accessToken = at;
-  expiresAt = Date.now() + ttlSec * 1000 - SKEW_MS;
-  localStorage.setItem(LS_KEY, JSON.stringify({ accessToken: at, expiresAt }));
-}
-
+/**
+ * Hard logout / session nuke.
+ */
 export function clearSession() {
   accessToken = null;
   expiresAt = 0;
   localStorage.removeItem(LS_KEY);
 }
 
-function haveValidToken() {
-  if (!accessToken || !expiresAt) return false;
-  return Date.now() + SKEW_MS < expiresAt;
+/**
+ * Ensure we are not holding a dead/expired token.
+ * If token is missing or expired, we clear it.
+ */
+function ensureFreshToken() {
+  if (!accessToken) return;
+  if (Date.now() > expiresAt) {
+    clearSession();
+  }
 }
 
-let refreshingPromise: Promise<boolean> | null = null;
-async function refreshOnce(): Promise<boolean> {
-  if (refreshingPromise) return refreshingPromise;
-  refreshingPromise = (async () => {
-    try {
-      const res = await fetch(`${BASE}/auth/refresh`, { method: "POST", credentials: "include" });
-      if (!res.ok) {
-        clearSession();
-        return false;
-      }
-      const data: { access_token: string; expires_in: number } = await res.json();
-      saveToken(data.access_token, data.expires_in);
-      return true;
-    } catch {
-      clearSession();
-      return false;
-    } finally {
-      refreshingPromise = null;
-    }
-  })();
-  return refreshingPromise;
+/**
+ * Is the current in-memory token considered usable?
+ * (This does NOT prove server will accept it, but lets UI make fast decisions.)
+ */
+export function hasValidSessionLocally(): boolean {
+  ensureFreshToken();
+  return !!accessToken;
 }
 
-function buildApiUrl(p: string): string {
-  if (!p) throw new Error("http(): path is required");
-  if (p.startsWith("http")) throw new Error("Absolute URLs are not allowed");
-  if (p.startsWith(BASE)) return p;
-  if (p.startsWith("/")) return `${BASE}${p}`;
-  return `${BASE}/${p}`;
-}
+/* -------------------------------------------------
+ * Core request primitive
+ * ------------------------------------------------- */
 
-async function fetchWithRefresh(path: string, init: RequestInit = {}): Promise<Response> {
-  if (!accessToken) loadTokenFromStorage();
-  if (!haveValidToken()) await refreshOnce();
+/**
+ * Perform an API request against our backend.
+ * Success path:
+ *   - returns parsed JSON (or `undefined` for 204)
+ *
+ * Failure path:
+ *   - throws AppError with status/code/message/retryable
+ *
+ * We NEVER throw raw Error or Response.
+ */
+async function request<T>(
+  path: string,
+  init: RequestInit = {}
+): Promise<T> {
+  ensureFreshToken();
 
-  const url = buildApiUrl(path);
   const headers = new Headers(init.headers || {});
-  const isLogin = url.includes("/auth/login");
-  const isRefresh = url.includes("/auth/refresh");
-  const isLogout = url.includes("/auth/logout");
-  const shouldAttachBearer = !isLogin && !isRefresh && !isLogout;
+  headers.set("Accept", "application/json");
 
-  if (shouldAttachBearer && haveValidToken()) {
+  // only set Content-Type for methods that carry a body
+  const method = (init.method || "GET").toUpperCase();
+  const needsContentType =
+    method !== "GET" &&
+    method !== "HEAD" &&
+    !headers.has("Content-Type");
+  if (needsContentType) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  // include Authorization header if we still think we're logged in
+  if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
 
-  let res = await fetch(url, { ...init, headers, credentials: "include" });
-
-  if (res.status === 401 && shouldAttachBearer) {
-    const ok = await refreshOnce();
-    if (ok && haveValidToken()) {
-      headers.set("Authorization", `Bearer ${accessToken}`);
-      res = await fetch(url, { ...init, headers, credentials: "include" });
-    }
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { ...init, headers });
+  } catch (err: unknown) {
+    // Network failure before we even got a Response
+    throw networkErrorToAppError(err);
   }
-  return res;
-}
 
-export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
-export type HttpOptions = Omit<RequestInit, "body"> & { body?: any; rawBody?: boolean };
-
-async function http(path: string, opts: HttpOptions = {}): Promise<Response> {
-  const method = ((opts.method || "GET") as HttpMethod).toUpperCase() as HttpMethod;
-  const isGetLike = method === "GET" || method === "HEAD";
-  const usingRaw = opts.rawBody === true;
-
-  const headers = new Headers(opts.headers || {});
-  const init: RequestInit = { ...opts, method, headers, credentials: "include" };
-
-  if (!isGetLike && !usingRaw) {
-    if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-    if (typeof opts.body !== "undefined" && !(opts.body instanceof FormData)) {
-      (init as any).body = typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
-    }
+  // Session expired or invalid credentials. Clear immediately.
+  if (res.status === 401) {
+    clearSession();
   }
-  return fetchWithRefresh(path, init);
-}
 
-// Optional shim until all callers are migrated
-export const apiFetch = (path: string, init: RequestInit = {}) => http(path, init);
-
-export { http };           // named
-export default http;       // default
-
-// JSON helper that uses the existing token/refresh flow
-export async function apiJson<T = unknown>(path: string, opts: HttpOptions = {}): Promise<T> {
-  const res = await http(path, opts);
-
+  // Non-2xx/3xx is an error
   if (!res.ok) {
-    // Try to surface API error details if present
-    const ctype = res.headers.get("content-type") || "";
-    if (ctype.includes("application/json")) {
-      const body = await res.json().catch(() => null) as any;
-      const msg = (body && (body.detail || body.message)) || `HTTP ${res.status}`;
-      throw new Error(msg);
-    }
-    const text = await res.text().catch(() => "");
-    throw new Error(text || `HTTP ${res.status}`);
+    throw await responseToAppError(res);
   }
 
-  // Handle no-content or non-JSON gracefully
+  // Handle explicit no-content
+  if (res.status === 204) {
+    return undefined as unknown as T;
+  }
+
+  // We expect JSON. If we can't parse it, that's on the server.
   const ctype = res.headers.get("content-type") || "";
-  if (res.status === 204) return undefined as unknown as T;
   if (!ctype.includes("application/json")) {
     const text = await res.text().catch(() => "");
-    throw new Error(text || "Expected JSON response");
+    const appErr: AppError = {
+      status: res.status,
+      code: "decode_error",
+      message: text || "Expected JSON response",
+      retryable: true
+    };
+    throw appErr;
   }
 
-  return res.json() as Promise<T>;
+  try {
+    return (await res.json()) as T;
+  } catch {
+    const appErr: AppError = {
+      status: res.status,
+      code: "decode_error",
+      message: "Invalid JSON from server",
+      retryable: true
+    };
+    throw appErr;
+  }
 }
+
+/* -------------------------------------------------
+ * Public API surface
+ * ------------------------------------------------- */
+
+export const api = {
+  get<T>(url: string, init?: RequestInit) {
+    return request<T>(url, { method: "GET", ...(init || {}) });
+  },
+
+  post<T, B = unknown>(url: string, body: B, init?: RequestInit) {
+    return request<T>(url, {
+      method: "POST",
+      body: JSON.stringify(body),
+      ...(init || {}),
+    });
+  },
+
+  put<T, B = unknown>(url: string, body: B, init?: RequestInit) {
+    return request<T>(url, {
+      method: "PUT",
+      body: JSON.stringify(body),
+      ...(init || {}),
+    });
+  },
+
+  patch<T, B = unknown>(url: string, body: B, init?: RequestInit) {
+    return request<T>(url, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      ...(init || {}),
+    });
+  },
+
+  delete<T>(url: string, init?: RequestInit) {
+    return request<T>(url, { method: "DELETE", ...(init || {}) });
+  },
+};

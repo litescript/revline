@@ -4,32 +4,39 @@ import { useAuth } from "@/features/auth/AuthProvider";
 import { toast } from "sonner";
 
 export default function Login() {
-  const { user, login } = useAuth();
+  const { user, loading, loginWithCredentials } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation() as { state?: { from?: { pathname?: string } } };
+  const location = useLocation() as {
+    state?: { from?: { pathname?: string } };
+  };
+
   const [email, setEmail] = useState("demo@revline.dev");
   const [password, setPassword] = useState("your.password");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // If already authenticated (e.g., after refresh), don’t stay on /login
+  // If already authenticated (e.g. page refresh), don't stay on /login
   useEffect(() => {
-    if (user) {
+    if (!loading && user) {
       const to = location.state?.from?.pathname ?? "/dashboard";
       navigate(to, { replace: true });
     }
-  }, [user, location.state, navigate]);
+  }, [user, loading, location.state, navigate]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (busy) return;
+
     setError(null);
     setBusy(true);
+
     try {
-      await login(email, password);
+      await loginWithCredentials(email, password);
       const to = location.state?.from?.pathname ?? "/dashboard";
       navigate(to, { replace: true });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Login failed";
+      const msg =
+        err instanceof Error ? err.message : "Login failed";
       setError(msg);
       toast.error(msg);
     } finally {
@@ -43,6 +50,7 @@ export default function Login() {
       <p className="mb-4 text-sm text-gray-600">
         Use <code>demo@revline.dev</code> / <code>your.password</code>.
       </p>
+
       <form onSubmit={onSubmit} className="space-y-3">
         <div>
           <label className="block text-sm font-medium">Email</label>
@@ -53,6 +61,7 @@ export default function Login() {
             autoComplete="username"
           />
         </div>
+
         <div>
           <label className="block text-sm font-medium">Password</label>
           <input
@@ -63,21 +72,30 @@ export default function Login() {
             autoComplete="current-password"
           />
         </div>
+
         {error && (
-          <p className="mt-2 text-sm text-red-600" role="alert" aria-live="polite">
+          <p
+            className="mt-2 text-sm text-red-600"
+            role="alert"
+            aria-live="polite"
+          >
             {error}
           </p>
         )}
+
         <button
           disabled={busy}
           className="mt-2 w-full rounded-md border px-3 py-2 hover:bg-gray-100 disabled:opacity-60"
         >
           {busy ? "Signing in…" : "Sign in"}
         </button>
-        <p className="text-sm mt-2">
-          New here? <a className="underline" href="/register">Create an account</a>
-        </p>
 
+        <p className="text-sm mt-2">
+          New here?{" "}
+          <a className="underline" href="/register">
+            Create an account
+          </a>
+        </p>
       </form>
     </div>
   );
