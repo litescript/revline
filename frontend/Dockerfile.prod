@@ -1,0 +1,34 @@
+# --- Build stage ---
+FROM node:20-alpine AS builder
+WORKDIR /app
+ENV CI=true
+
+# 1. Copy only the frontend package metadata first for better build caching
+COPY frontend/package*.json ./
+
+# 2. Install deps
+RUN npm ci || npm install
+
+# 3. Copy the rest of the frontend source code into the image
+COPY frontend ./
+
+# 4. Inject build-time env so Vite bakes correct API base into the bundle
+ARG VITE_BASE=/
+ENV VITE_BASE=$VITE_BASE
+
+ARG VITE_API_BASE=/api/v1
+ENV VITE_API_BASE=$VITE_API_BASE
+
+# 5. Build the production bundle
+RUN npm run build
+
+# --- Runtime stage (nginx) ---
+FROM nginx:alpine
+
+# Copy built static assets from the builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Copy our nginx template (so proxy /api -> api-prod:8000 still works)
+COPY infra/nginx/default.conf.template /etc/nginx/templates/default.conf.template
+
+EXPOSE 80

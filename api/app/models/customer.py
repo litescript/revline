@@ -5,6 +5,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
 
+from typing import TYPE_CHECKING, List
+
+if TYPE_CHECKING:
+    from .ro import RepairOrder
+    from .vehicle import Vehicle
+
 
 class Customer(Base):
     __tablename__ = "customers"

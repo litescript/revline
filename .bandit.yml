@@ -1,0 +1,28 @@
+# Tell Bandit exactly what to scan
+targets:
+  - api/app
+
+# Be aggressive about what NOT to consider
+exclude:
+  - tests
+  - node_modules
+  - frontend
+  - dist
+  - build
+  - docker
+  - scripts
+  - .git
+  - .mypy_cache
+  - .pytest_cache
+  - __pycache__
+  - .venv
+  - venv
+  - env
+  - .env
+  - .ruff_cache
+  - migrations  # if you have alembic-style migrations, they can false-positive
+
+# (Optional) later we can skip noisy rules, but for now let's see raw signal.
+# skips:
+#   - B101  # assert_used (for test code)
+#   - B105  # hardcoded_password_string

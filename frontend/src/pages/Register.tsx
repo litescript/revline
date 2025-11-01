@@ -2,20 +2,27 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { api } from "@/lib/api/client";
 
 type Form = { name: string; email: string; password: string };
 type Errors = Partial<Record<keyof Form | "general", string>>;
 
 export default function RegisterPage() {
   const nav = useNavigate();
-  const { login } = useAuth();
-  const [form, setForm] = useState<Form>({ name: "", email: "", password: "" });
+  const { loginWithCredentials } = useAuth();
+
+  const [form, setForm] = useState<Form>({
+    name: "",
+    email: "",
+    password: "",
+  });
   const [errors, setErrors] = useState<Errors>({});
   const [loading, setLoading] = useState(false);
 
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
+  // local client-side validation before hitting backend
   const validate = () => {
     const e: Errors = {};
     if (!form.name.trim()) e.name = "Name is required";
@@ -31,28 +38,33 @@ export default function RegisterPage() {
 
     setLoading(true);
     setErrors({});
+
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_BASE}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // no credentials needed; backend only sets refresh on login/refresh
-        body: JSON.stringify(form),
+      // Hardened client call:
+      // api.post should:
+      //   - JSON.stringify body for us OR accept plain object depending on your client impl
+      //   - throw AppError on !ok
+      //   - return parsed JSON (we don't actually need it here except for error messages)
+      await api.post("/auth/register", {
+        name: form.name,
+        email: form.email,
+        password: form.password,
       });
 
-      if (!res.ok) {
-        const msg = (await res.json().catch(() => null))?.detail ?? "Registration failed";
-        setErrors((e) => ({ ...e, general: msg }));
-        toast.error(msg);
-        return;
-      }
-
       // Auto-login after successful create
-      await login(form.email, form.password, { silent: true });
+      await loginWithCredentials(form.email, form.password, { silent: true });
+
       toast.success("Account created — you’re in.");
-      nav("/dashboard");
-    } catch {
-      setErrors((e) => ({ ...e, general: "Network error — try again" }));
-      toast.error("Network error — try again");
+      nav("/dashboard", { replace: true });
+    } catch (err: any) {
+      // Try to surface a useful message.
+      // AppError should have `message`, but we also fall back gracefully.
+      const msg =
+        (err && typeof err.message === "string" && err.message) ||
+        "Registration failed";
+
+      setErrors((e) => ({ ...e, general: msg }));
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -63,7 +75,11 @@ export default function RegisterPage() {
       <h1 className="mb-6 text-2xl font-semibold">Create your account</h1>
 
       {errors.general && (
-        <div className="mb-4 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert" aria-live="polite">
+        <div
+          className="mb-4 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700"
+          role="alert"
+          aria-live="polite"
+        >
           {errors.general}
         </div>
       )}
@@ -81,7 +97,9 @@ export default function RegisterPage() {
             placeholder="Jane Doe"
             autoComplete="name"
           />
-          {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
+          {errors.name && (
+            <p className="mt-1 text-xs text-red-600">{errors.name}</p>
+          )}
         </div>
 
         <div>
@@ -97,7 +115,9 @@ export default function RegisterPage() {
             placeholder="you@revline.dev"
             autoComplete="email"
           />
-          {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
+          {errors.email && (
+            <p className="mt-1 text-xs text-red-600">{errors.email}</p>
+          )}
         </div>
 
         <div>
@@ -113,7 +133,9 @@ export default function RegisterPage() {
             placeholder="Minimum 8 characters"
             autoComplete="new-password"
           />
-          {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
+          {errors.password && (
+            <p className="mt-1 text-xs text-red-600">{errors.password}</p>
+          )}
         </div>
 
         <button

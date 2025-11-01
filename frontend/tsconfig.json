@@ -8,14 +8,15 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": true,
     "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
+    "skipLibCheck": false,
     "isolatedModules": true,
     "allowJs": false,
     "resolveJsonModule": true,
     "types": ["vite/client", "vitest"],
     "noEmit": true,
-
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]

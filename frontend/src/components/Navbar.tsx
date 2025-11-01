@@ -30,7 +30,12 @@ export default function Navbar() {
             <NavItem to="/">Home</NavItem>
             <NavItem to="/health">Health</NavItem>
             <NavItem to="/about">About</NavItem>
-            {user && <NavItem to="/dashboard">Dashboard</NavItem>}
+            {user && (
+              <>
+                <NavItem to="/dashboard">Dashboard</NavItem>
+                <NavItem to="/ros">Active ROs</NavItem>
+              </>
+            )}
           </nav>
         </div>
 

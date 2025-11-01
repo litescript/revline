@@ -1,147 +1,232 @@
 // frontend/src/lib/api/client.ts
-type TokenBundle = { accessToken: string; expiresAt: number };
+
+import {
+  AppError,
+  networkErrorToAppError,
+  responseToAppError,
+} from "@/lib/query/error";
+
 const LS_KEY = "revline_token";
-const BASE = import.meta.env.VITE_API_BASE || "/api";
+const BASE = "/api/v1"; // single source of truth for backend base path
+const SKEW_MS = 90_000; // expire ~90s early to avoid edge-rollover
 
-// Module-scoped session cache
+export type TokenBundle = {
+  accessToken: string;
+  expiresAt: number; // epoch millis
+};
+
+// in-memory cache mirrors localStorage so we don't parse JSON constantly
 let accessToken: string | null = null;
-let expiresAt = 0; // epoch millis
+let expiresAt = 0;
 
-// Skew buffer so we refresh a bit early (avoids edge races)
-const SKEW_MS = 90_000;
+/* -------------------------------------------------
+ * Token lifecycle
+ * ------------------------------------------------- */
 
-// -------------------- session helpers --------------------
+/**
+ * Validate that a candidate bundle is well-formed and not already expired.
+ * We do NOT "try our best" with garbage here. If it's wrong, we drop session.
+ */
+function isValidBundle(maybe: unknown): maybe is TokenBundle {
+  if (!maybe || typeof maybe !== "object") return false;
+  const b = maybe as Partial<TokenBundle>;
+  if (typeof b.accessToken !== "string") return false;
+  if (typeof b.expiresAt !== "number") return false;
+  // must still be valid >5s from now
+  if (b.expiresAt <= Date.now() + 5000) return false;
+  return true;
+}
+
+/**
+ * Load token from localStorage into memory.
+ * Call this once on app start.
+ */
 export function loadTokenFromStorage() {
   const raw = localStorage.getItem(LS_KEY);
   if (!raw) return;
-
-  // Happy path: JSON bundle { accessToken, expiresAt }
   try {
-    const parsed = JSON.parse(raw) as TokenBundle;
-    if (
-      parsed &&
-      typeof parsed.accessToken === "string" &&
-      typeof parsed.expiresAt === "number"
-    ) {
+    const parsed = JSON.parse(raw);
+    if (isValidBundle(parsed)) {
       accessToken = parsed.accessToken;
       expiresAt = parsed.expiresAt;
-      return;
+    } else {
+      // corrupted / stale / nonsense
+      clearSession();
     }
   } catch {
-    // fall through to legacy check
+    clearSession();
   }
+}
 
-  // Legacy: bare JWT string (e.g., "eyJhbGciOi...") — migrate it once
-  if (typeof raw === "string" && raw.includes(".")) {
-    accessToken = raw;
-    // Give a short soft-ttl; refresh() will replace it anyway
-    expiresAt = Date.now() + 5 * 60 * 1000;
-    localStorage.setItem(LS_KEY, JSON.stringify({ accessToken, expiresAt }));
+/**
+ * Save token from a login or refresh response.
+ * We apply an early-expire skew so we don't cut it too close.
+ */
+export function saveToken(token: string, ttlSec: number) {
+  accessToken = token;
+  expiresAt = Date.now() + ttlSec * 1000 - SKEW_MS;
+
+  // only persist if it still passes validation after skew
+  const bundle: TokenBundle = { accessToken, expiresAt };
+  if (!isValidBundle(bundle)) {
+    // if ttl was tiny or bogus, treat as invalid auth instead of storing junk
+    clearSession();
     return;
   }
 
-  // Unknown / corrupted: clear
-  clearSession();
+  localStorage.setItem(LS_KEY, JSON.stringify(bundle));
 }
 
-export function saveToken(at: string, ttlSec: number) {
-  accessToken = at;
-  // Use the same skew here so apiFetch never sees a token as "valid" right at the edge.
-  expiresAt = Date.now() + ttlSec * 1000 - SKEW_MS;
-  localStorage.setItem(LS_KEY, JSON.stringify({ accessToken: at, expiresAt }));
-}
-
+/**
+ * Hard logout / session nuke.
+ */
 export function clearSession() {
   accessToken = null;
   expiresAt = 0;
   localStorage.removeItem(LS_KEY);
 }
 
-function haveValidToken(): boolean {
-  if (!accessToken || !expiresAt) return false;
-  // Token must be valid at least SKEW_MS into the future.
-  return Date.now() + SKEW_MS < expiresAt;
+/**
+ * Ensure we are not holding a dead/expired token.
+ * If token is missing or expired, we clear it.
+ */
+function ensureFreshToken() {
+  if (!accessToken) return;
+  if (Date.now() > expiresAt) {
+    clearSession();
+  }
 }
 
-// -------------------- refresh (single-flight) --------------------
-let refreshingPromise: Promise<boolean> | null = null;
-
-async function refreshOnce(): Promise<boolean> {
-  if (refreshingPromise) return refreshingPromise; // single-flight lock
-
-  refreshingPromise = (async () => {
-    try {
-      const res = await fetch(`${BASE}/auth/refresh`, {
-        method: "POST",
-        credentials: "include", // rely on HttpOnly cookie
-      });
-      if (!res.ok) {
-        if (import.meta.env.DEV) {
-          console.debug("[api] refresh failed:", res.status);
-        }
-        clearSession();
-        return false;
-      }
-      const data: { access_token: string; expires_in: number } = await res.json();
-      saveToken(data.access_token, data.expires_in);
-      if (import.meta.env.DEV) console.debug("[api] refresh OK");
-      return true;
-    } catch (err) {
-      if (import.meta.env.DEV) console.debug("[api] refresh network error:", err);
-      clearSession();
-      return false;
-    } finally {
-      refreshingPromise = null; // release lock
-    }
-  })();
-
-  return refreshingPromise;
+/**
+ * Is the current in-memory token considered usable?
+ * (This does NOT prove server will accept it, but lets UI make fast decisions.)
+ */
+export function hasValidSessionLocally(): boolean {
+  ensureFreshToken();
+  return !!accessToken;
 }
 
-// -------------------- main fetch with pre-refresh & 401 retry --------------------
-export async function apiFetch(path: string, init: RequestInit = {}) {
-  if (!accessToken) loadTokenFromStorage();
+/* -------------------------------------------------
+ * Core request primitive
+ * ------------------------------------------------- */
 
-  // Pre-refresh if token missing/expiring soon
-  if (!haveValidToken()) {
-    await refreshOnce(); // ignore result; still attempt call
+/**
+ * Perform an API request against our backend.
+ * Success path:
+ *   - returns parsed JSON (or `undefined` for 204)
+ *
+ * Failure path:
+ *   - throws AppError with status/code/message/retryable
+ *
+ * We NEVER throw raw Error or Response.
+ */
+async function request<T>(
+  path: string,
+  init: RequestInit = {}
+): Promise<T> {
+  ensureFreshToken();
+
+  const headers = new Headers(init.headers || {});
+  headers.set("Accept", "application/json");
+
+  // only set Content-Type for methods that carry a body
+  const method = (init.method || "GET").toUpperCase();
+  const needsContentType =
+    method !== "GET" &&
+    method !== "HEAD" &&
+    !headers.has("Content-Type");
+  if (needsContentType) {
+    headers.set("Content-Type", "application/json");
   }
 
-  const url = path.startsWith("http") ? path : `${BASE}${path}`;
-  const headers = new Headers(init.headers || {});
-
-  // Auth endpoints that should NOT receive Authorization
-  const isLogin = url.includes("/auth/login");
-  const isRefresh = url.includes("/auth/refresh");
-  const isLogout = url.includes("/auth/logout");
-
-  const shouldAttachBearer = !isLogin && !isRefresh && !isLogout;
-
-  if (shouldAttachBearer && haveValidToken()) {
+  // include Authorization header if we still think we're logged in
+  if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
 
-  if (import.meta.env.DEV) {
-    console.debug("[api] →", init.method ?? "GET", url);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { ...init, headers });
+  } catch (err: unknown) {
+    // Network failure before we even got a Response
+    throw networkErrorToAppError(err);
   }
 
-  let res = await fetch(url, { ...init, headers, credentials: "include" });
-
-  if (import.meta.env.DEV) {
-    console.debug("[api] ←", res.status, url);
+  // Session expired or invalid credentials. Clear immediately.
+  if (res.status === 401) {
+    clearSession();
   }
 
-  // On 401 (for non-auth endpoints), try a single refresh then retry once
-  if (res.status === 401 && shouldAttachBearer) {
-    const ok = await refreshOnce();
-    if (ok && haveValidToken()) {
-      headers.set("Authorization", `Bearer ${accessToken}`);
-      res = await fetch(url, { ...init, headers, credentials: "include" });
-      if (import.meta.env.DEV) {
-        console.debug("[api] ← retry", res.status, url);
-      }
-    }
+  // Non-2xx/3xx is an error
+  if (!res.ok) {
+    throw await responseToAppError(res);
   }
 
-  return res;
+  // Handle explicit no-content
+  if (res.status === 204) {
+    return undefined as unknown as T;
+  }
+
+  // We expect JSON. If we can't parse it, that's on the server.
+  const ctype = res.headers.get("content-type") || "";
+  if (!ctype.includes("application/json")) {
+    const text = await res.text().catch(() => "");
+    const appErr: AppError = {
+      status: res.status,
+      code: "decode_error",
+      message: text || "Expected JSON response",
+      retryable: true
+    };
+    throw appErr;
+  }
+
+  try {
+    return (await res.json()) as T;
+  } catch {
+    const appErr: AppError = {
+      status: res.status,
+      code: "decode_error",
+      message: "Invalid JSON from server",
+      retryable: true
+    };
+    throw appErr;
+  }
 }
+
+/* -------------------------------------------------
+ * Public API surface
+ * ------------------------------------------------- */
+
+export const api = {
+  get<T>(url: string, init?: RequestInit) {
+    return request<T>(url, { method: "GET", ...(init || {}) });
+  },
+
+  post<T, B = unknown>(url: string, body: B, init?: RequestInit) {
+    return request<T>(url, {
+      method: "POST",
+      body: JSON.stringify(body),
+      ...(init || {}),
+    });
+  },
+
+  put<T, B = unknown>(url: string, body: B, init?: RequestInit) {
+    return request<T>(url, {
+      method: "PUT",
+      body: JSON.stringify(body),
+      ...(init || {}),
+    });
+  },
+
+  patch<T, B = unknown>(url: string, body: B, init?: RequestInit) {
+    return request<T>(url, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      ...(init || {}),
+    });
+  },
+
+  delete<T>(url: string, init?: RequestInit) {
+    return request<T>(url, { method: "DELETE", ...(init || {}) });
+  },
+};

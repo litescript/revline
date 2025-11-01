@@ -1,0 +1,162 @@
+[
+  {
+    "code": "01",
+    "label": "Regular Maintenance"
+  },
+  {
+    "code": "02",
+    "label": "Accessories"
+  },
+  {
+    "code": "03",
+    "label": "BMW Loaner Car"
+  },
+  {
+    "code": "04",
+    "label": "Pickup/Delivery"
+  },
+  {
+    "code": "05",
+    "label": "Enterprise Rental"
+  },
+  {
+    "code": "06",
+    "label": "Shuttle"
+  },
+  {
+    "code": "07",
+    "label": "Waiter"
+  },
+  {
+    "code": "10",
+    "label": "Detail"
+  },
+  {
+    "code": "11",
+    "label": "Engine"
+  },
+  {
+    "code": "12",
+    "label": "Engine Electrical"
+  },
+  {
+    "code": "13",
+    "label": "Fuel System"
+  },
+  {
+    "code": "16",
+    "label": "Fuel Tank & Lines"
+  },
+  {
+    "code": "17",
+    "label": "Cooling System"
+  },
+  {
+    "code": "18",
+    "label": "Exhaust"
+  },
+  {
+    "code": "21",
+    "label": "Clutch"
+  },
+  {
+    "code": "23",
+    "label": "Manual Trans"
+  },
+  {
+    "code": "24",
+    "label": "Automatic Trans"
+  },
+  {
+    "code": "25",
+    "label": "Shifter"
+  },
+  {
+    "code": "26",
+    "label": "Driveshaft"
+  },
+  {
+    "code": "27",
+    "label": "Transfer Case"
+  },
+  {
+    "code": "31",
+    "label": "Front Suspension"
+  },
+  {
+    "code": "32",
+    "label": "Steering"
+  },
+  {
+    "code": "33",
+    "label": "Rear Axle"
+  },
+  {
+    "code": "34",
+    "label": "Brake System"
+  },
+  {
+    "code": "35",
+    "label": "Pedals"
+  },
+  {
+    "code": "36",
+    "label": "Wheels/Tires"
+  },
+  {
+    "code": "37",
+    "label": "Alignment"
+  },
+  {
+    "code": "41",
+    "label": "Sublet"
+  },
+  {
+    "code": "50",
+    "label": "Body"
+  },
+  {
+    "code": "51",
+    "label": "Body Equip"
+  },
+  {
+    "code": "52",
+    "label": "Seats"
+  },
+  {
+    "code": "54",
+    "label": "Convertible Top / Sunroof"
+  },
+  {
+    "code": "61",
+    "label": "Electrical System"
+  },
+  {
+    "code": "62",
+    "label": "Instruments"
+  },
+  {
+    "code": "63",
+    "label": "Lights"
+  },
+  {
+    "code": "64",
+    "label": "Heat and AC"
+  },
+  {
+    "code": "65",
+    "label": "Radio / Special Equipment"
+  },
+  {
+    "code": "72",
+    "label": "Seat Belts"
+  },
+  {
+    "code": "88",
+    "label": "Campaign Recalls"
+  },
+  {
+    "code": "89",
+    "label": "Prep"
+  }
+]

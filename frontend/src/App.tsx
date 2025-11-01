@@ -1,5 +1,6 @@
 // (7) App routes: keep existing pages, add /login and protected /dashboard
 import { Route, Routes, Navigate } from "react-router-dom";
+import ActiveROBoard from "@/pages/ActiveROBoard";
 // (7a) fix imports to use alias
 import Layout from "@/components/layout/Layout";
 import Home from "@/pages/Home";
@@ -22,6 +23,7 @@ export default function App() {
         <Route index element={<Home />} />
         <Route path="health" element={<Health />} />
         <Route path="about" element={<About />} />
+        <Route path="/ros" element={<ActiveROBoard />} />
 
         {/* Protected route */}
         <Route

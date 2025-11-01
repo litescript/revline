@@ -1,14 +1,13 @@
-// frontend/src/components/LogoutButton.tsx
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/features/auth/AuthProvider";
 
 export default function LogoutButton() {
-  const { logout } = useAuth();        // use the context, not a lib helper
+  const { logoutUser } = useAuth();
   const navigate = useNavigate();
 
   async function handleLogout() {
     try {
-      await logout();                  // clears tokens + context user
+      await logoutUser(); // clears tokens + context user
     } finally {
       navigate("/login", { replace: true }); // always return to login
     }

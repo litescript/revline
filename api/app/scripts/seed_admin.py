@@ -1,18 +1,20 @@
+from sqlalchemy.orm import Session
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.models.user import User
-from sqlalchemy.orm import Session
 
 
-def main():
+def main() -> None:
+    """Seed a default admin user for dev environments."""
     db: Session = SessionLocal()
     try:
         email = "admin@revline.local"
-        if not db.query(User).filter(User.email == email).first():
-            u = User(email=email, name="Admin", password_hash=hash_password("admin123"))
-            db.add(u)
+        existing = db.query(User).filter(User.email == email).first()
+        if existing is None:
+            user = User(email=email, name="Admin", password_hash=hash_password("admin123"))
+            db.add(user)
             db.commit()
-            print("Seeded admin:", email, "password=admin123")
+            print(f"Seeded admin: {email} (password=admin123)")
         else:
             print("Admin already exists")
     finally:

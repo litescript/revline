@@ -1,14 +1,80 @@
 [project]
 name = "revline"
-version = "0.1.0"
+version = "0.5.0"
+description = "Revline backend service (FastAPI + Postgres + Redis)"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+
 dependencies = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
   "pydantic>=2",
+  "pydantic-settings>=2",
   "orjson",
+  "SQLAlchemy>=2.0",
+  "psycopg2-binary",
+  "redis>=5",
+  "PyJWT>=2.9",
 ]
+
+
 [project.optional-dependencies]
-dev = ["pytest","httpx","ruff","mypy","types-orjson"]
+dev = [
+  "pytest",
+  "httpx",
+  "ruff",
+  "mypy",
+  "bandit",
+  "types-orjson",
+  "types-redis",
+  "types-requests",
+]
+
+############################
+# Ruff configuration
+############################
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+extend-select = [
+    "E", "F", "B", "I", "ARG", "PL",
+]
+
+ignore = [
+    "E501",
+]
+
+[tool.ruff.isort]
+known-first-party = ["app"]
+combine-as-imports = true
+
+############################
+# mypy configuration
+############################
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.10"
 strict = true
+warn_unused_configs = true
+warn_return_any = true
+warn_unreachable = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+plugins = ["pydantic.mypy"]
+mypy_path = ["./api"]
+
+[[tool.mypy.overrides]]
+module = [
+    "redis.*",
+    "uvicorn.*",
+    "orjson.*",
+    "sqlalchemy.*",
+    "alembic.*",
+]
+ignore_missing_imports = true
+
+############################
+# Bandit configuration
+############################
+[tool.bandit]
+skips = ["B101"]
