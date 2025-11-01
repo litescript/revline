@@ -194,11 +194,24 @@ ignore_missing_imports = true
 
 ---
 
+## Compatibility Note
+
+**Redis Type Parameter Issue:**
+Initial attempt used `redis.Redis[str]` generic type annotation, but this caused runtime error in Python 3.12:
+```
+TypeError: <class 'redis.asyncio.client.Redis'> is not a generic class
+```
+
+**Solution:** Removed generic type parameter and added `type: ignore[type-arg]` comments:
+- `redis.Redis[str]` → `redis.Redis  # type: ignore[type-arg]`
+
+This is a known limitation of redis-py (types not yet generic-aware).
+
 ## Next Steps
 
 1. ✅ Commit these fixes to `feat/sprint-6-auth-auditor` branch
-2. Run full Sprint 6 review script (once created)
-3. Verify API still functions correctly
+2. ✅ Verify API starts cleanly and passes health check
+3. Run full Sprint 6 review script (when available)
 4. Merge to main after Atlas approval
 
 ---
