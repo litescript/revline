@@ -89,7 +89,7 @@ async def login(
     payload: UserLogin,
     response: Response,
     db: Session = Depends(get_db),
-    r: redis.Redis[str] = Depends(get_redis),
+    r: redis.Redis = Depends(get_redis),  # type: ignore[type-arg]
     _limiter: None = Depends(get_auth_limiter),
 ) -> dict[str, Any]:
     """
@@ -163,7 +163,7 @@ def me(
 async def refresh(
     request: Request,
     response: Response,
-    r: redis.Redis[str] = Depends(get_redis),
+    r: redis.Redis = Depends(get_redis),  # type: ignore[type-arg]
 ) -> dict[str, Any]:
     """
     Refresh access token using refresh token from cookie.
@@ -212,7 +212,7 @@ async def refresh(
 async def logout(
     request: Request,
     response: Response,
-    r: redis.Redis[str] = Depends(get_redis),
+    r: redis.Redis = Depends(get_redis),  # type: ignore[type-arg]
 ) -> dict[str, bool]:
     """
     Logout user by revoking refresh token and clearing cookie.

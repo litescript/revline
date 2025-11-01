@@ -11,10 +11,10 @@ from .config import settings
 
 logger = logging.getLogger(__name__)
 
-_redis_client: redis.Redis[str] | None = None
+_redis_client: redis.Redis | None = None  # type: ignore[type-arg]
 
 
-def init_rate_limiter(r: redis.Redis[str]) -> None:
+def init_rate_limiter(r: redis.Redis) -> None:  # type: ignore[type-arg]
     """Initialize rate limiter with Redis client."""
     global _redis_client
     _redis_client = r
