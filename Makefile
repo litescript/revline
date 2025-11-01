@@ -42,3 +42,8 @@ up:
 .PHONY: seeder-validate
 seeder-validate:
 \tbash scripts/validate_seeder_lockin.sh
+
+.PHONY: auth-audit
+auth-audit:
+\tbash scripts/run-auth-audit.sh
+
