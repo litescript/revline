@@ -1,0 +1,187 @@
+--- a/api/app/core/seed_active_ros.py
++++ b/api/app/core/seed_active_ros.py
+@@ -1,10 +1,13 @@
+ from __future__ import annotations
+ from datetime import datetime, timedelta
+ import random
++import logging
+
+ from sqlalchemy.orm import Session
+ from sqlalchemy import select
+
++from app.core.seed_helpers import get_or_create_customer, get_or_create_vehicle
++
+ from app.models.customer import Customer
+ from app.models.vehicle import Vehicle
+ from app.models.ro import RepairOrder
+@@ -41,44 +44,60 @@
+ MAKES = ["BMW", "MINI", "BMW", "BMW", "BMW", "MINI"]
+ MODELS = ["X3 xDrive30i", "Cooper S", "330i", "i4 eDrive40", "X5 50i", "M340i", "X1", "530e"]
+
++logger = logging.getLogger(__name__)
++
+
+ def _ensure_min_customers_vehicles(db: Session, n: int = 12) -> list[tuple[Customer, Vehicle]]:
+-    # materialize as lists to avoid Sequence typing complaints
+-    custs: list[Customer] = list(db.execute(select(Customer)).scalars())
+-    vehs: list[Vehicle] = list(db.execute(select(Vehicle)).scalars())
+-
+-    while len(custs) < n:
+-        fn = random.choice(FIRST_NAMES)
+-        ln = random.choice(LAST_NAMES)
+-        c = Customer(
+-            first_name=fn,
+-            last_name=ln,
+-            email=f"{fn.lower()}.{ln.lower()}@example.com",
+-            phone="555-555-1212",
+-        )
+-        db.add(c)
+-        db.flush()
+-        custs.append(c)
+-
+-    while len(vehs) < n:
+-        owner = random.choice(custs)
+-        year = random.randint(2015, 2025)
+-        make = random.choice(MAKES)
+-        model = random.choice(MODELS)
+-        v = Vehicle(
+-            customer_id=owner.id,
+-            vin=f"TESTVIN{random.randint(100000,999999)}",
+-            plate=None,
+-            year=year,
+-            make=make,
+-            model=model,
+-        )
+-        db.add(v)
+-        db.flush()
+-        vehs.append(v)
+-
+-    db.commit()
+-    return [(custs[i % len(custs)], vehs[i % len(vehs)]) for i in range(n)]
++    """
++    Ensure at least `n` customers and vehicles exist in the database.
++    Uses get_or_create pattern for idempotency.
++
++    Returns list of (customer, vehicle) tuples for RO creation.
++    """
++    logger.info(f"Ensuring at least {n} customers and vehicles exist...")
++
++    # Use deterministic data for true idempotency
++    # Generate n combinations of first_name + last_name
++    pairs_to_ensure: list[tuple[str, str]] = []
++    for i in range(n):
++        fn = FIRST_NAMES[i % len(FIRST_NAMES)]
++        ln = LAST_NAMES[i % len(LAST_NAMES)]
++        # Append index to names if we run out of unique combinations
++        if i >= len(FIRST_NAMES) * len(LAST_NAMES):
++            fn = f"{fn}{i}"
++        pairs_to_ensure.append((fn, ln))
++
++    # Get or create customers
++    customers: list[Customer] = []
++    for fn, ln in pairs_to_ensure:
++        email = f"{fn.lower()}.{ln.lower()}@example.com"
++        c = get_or_create_customer(
++            db=db,
++            email=email,
++            first_name=fn,
++            last_name=ln,
++            phone="555-555-1212",
++        )
++        customers.append(c)
++
++    # Get or create vehicles (one per customer, deterministic VINs)
++    vehicles: list[Vehicle] = []
++    for i, customer in enumerate(customers):
++        # Deterministic VIN based on index (idempotent across restarts)
++        vin = f"TESTSEED{str(i+1).zfill(6)}"  # TESTSEED000001, TESTSEED000002, etc.
++        year = 2015 + (i % 11)  # Cycle through 2015-2025
++        make = MAKES[i % len(MAKES)]
++        model = MODELS[i % len(MODELS)]
++
++        v = get_or_create_vehicle(
++            db=db,
++            vin=vin,
++            customer_id=customer.id,
++            year=year,
++            make=make,
++            model=model,
++        )
++        vehicles.append(v)
++
++    db.commit()
++    logger.info(f"Ensured {len(customers)} customers and {len(vehicles)} vehicles exist.")
++    return list(zip(customers, vehicles))
+
+
+ def seed_active_ros_if_empty(db: Session, min_rows: int = 12) -> None:
++    logger.info("Checking if RO seeding is needed...")
+     # if any RO exists, do nothing
+-    if db.execute(select(RepairOrder.id).limit(1)).first():
++    existing_ro = db.execute(select(RepairOrder.id).limit(1)).first()
++    if existing_ro:
++        logger.info("RepairOrders already exist, skipping seed.")
+         return
+
+     status_codes: list[str] = list(db.execute(select(ROStatus.status_code)).scalars())
+     if not status_codes:
+-        # meta should be seeded earlier
++        logger.warning("No ROStatus codes found. Meta data must be seeded first.")
+         return
+
+     pairs = _ensure_min_customers_vehicles(db, n=min_rows)
+@@ -112,3 +131,4 @@
+
+     db.add_all(rows)
+     db.commit()
++    logger.info(f"Seeded {len(rows)} RepairOrders successfully.")
+
+--- a/api/app/main.py
++++ b/api/app/main.py
+@@ -1,4 +1,5 @@
+ from contextlib import asynccontextmanager
++import logging
+ from fastapi import FastAPI
+ from fastapi.middleware.cors import CORSMiddleware
+
+@@ -12,17 +13,33 @@
+
+ API_PREFIX = "/api/v1"
+
++logger = logging.getLogger(__name__)
++
+
+ @asynccontextmanager
+ async def lifespan(api: FastAPI):
+     """Create tables and seed demo data for dev environments."""
+-    Base.metadata.create_all(bind=engine)
+-    db = SessionLocal()
++    logger.info("FastAPI lifespan: starting up...")
++
+     try:
+-        seed_meta_if_empty(db)
+-        seed_active_ros_if_empty(db)
++        # Create all tables
++        logger.info("Creating database tables...")
++        Base.metadata.create_all(bind=engine)
++        logger.info("Database tables created successfully.")
++
++        # Seed demo data (wrapped to prevent startup crashes)
++        db = SessionLocal()
++        try:
++            logger.info("Seeding metadata...")
++            seed_meta_if_empty(db)
++            logger.info("Seeding active repair orders...")
++            seed_active_ros_if_empty(db)
++            logger.info("Seeding completed successfully.")
++        except Exception as e:
++            logger.error(f"Seeding failed (non-fatal): {e}", exc_info=True)
++            # Don't crash startup - allow API to boot even if seeding fails
++        finally:
++            db.close()
+     finally:
+-        db.close()
++        pass
+     yield
+-    # teardown placeholder
++    logger.info("FastAPI lifespan: shutting down...")

@@ -1,8 +1,12 @@
 from pathlib import Path
 import json
+import logging
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 from app.models.meta import ROStatus, ServiceCategory
+
+logger = logging.getLogger(__name__)
 
 # Resolve data dir robustly for both layouts:
 #   a) /app/app/data  (repo: api/app/data)
@@ -18,17 +22,79 @@ else:
     DATA_DIR = _BASE / "data"
 
 
+# Canonical baseline RO status codes that must always exist
+CANONICAL_STATUS_CODES = [
+    {"status_code": "OPEN",  "label": "Open",             "role_owner": "advisor",    "color": "green"},
+    {"status_code": "DIAG",  "label": "Diagnosis",        "role_owner": "technician", "color": "yellow"},
+    {"status_code": "PARTS", "label": "Awaiting Parts",   "role_owner": "parts",      "color": "purple"},
+    {"status_code": "READY", "label": "Ready for Pickup", "role_owner": "advisor",    "color": "teal"},
+]
+
+
 def _read_json(filename: str):
     fp = DATA_DIR / filename
     return json.loads(fp.read_text(encoding="utf-8"))
 
 
+def _upsert_ro_status(db: Session, status_code: str, label: str, role_owner: str, color: str) -> ROStatus:
+    """
+    Idempotently insert or update an ROStatus row by status_code.
+    Returns the ROStatus instance (existing or newly created).
+    """
+    stmt = select(ROStatus).where(ROStatus.status_code == status_code)
+    existing = db.execute(stmt).scalar_one_or_none()
+
+    if existing:
+        # Update existing
+        existing.label = label
+        existing.role_owner = role_owner
+        existing.color = color
+        db.flush()
+        return existing
+    else:
+        # Insert new
+        obj = ROStatus(status_code=status_code, label=label, role_owner=role_owner, color=color)
+        db.add(obj)
+        try:
+            db.flush()
+            return obj
+        except IntegrityError:
+            # Race condition: another transaction inserted it
+            db.rollback()
+            existing = db.execute(stmt).scalar_one_or_none()
+            if existing:
+                return existing
+            raise
+
+
 def seed_meta_if_empty(db: Session) -> None:
-    # RO statuses
-    if db.execute(select(func.count(ROStatus.id))).scalar_one() == 0:
+    # RO statuses - always ensure canonical codes exist first
+    for entry in CANONICAL_STATUS_CODES:
+        _upsert_ro_status(
+            db,
+            status_code=entry["status_code"],
+            label=entry["label"],
+            role_owner=entry["role_owner"],
+            color=entry["color"]
+        )
+    db.commit()
+    logger.info("Upserted %d canonical RO status codes", len(CANONICAL_STATUS_CODES))
+
+    # Load additional statuses from JSON if needed
+    if db.execute(select(func.count(ROStatus.id))).scalar_one() == len(CANONICAL_STATUS_CODES):
+        # Only canonical codes exist, load the full set
         rows = _read_json("ro_statuses.json")
-        db.add_all([ROStatus(**r) for r in rows])
+        for row in rows:
+            _upsert_ro_status(
+                db,
+                status_code=row["status_code"],
+                label=row["label"],
+                role_owner=row["role_owner"],
+                color=row["color"]
+            )
         db.commit()
+        logger.info("Loaded additional RO statuses from ro_statuses.json")
+
     # Service categories
     if db.execute(select(func.count(ServiceCategory.id))).scalar_one() == 0:
         rows = _read_json("service_categories.json")
