@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
-from pathlib import Path
 import json
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/meta", tags=["meta"])
 

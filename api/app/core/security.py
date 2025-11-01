@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, cast
 
 import jwt
 from fastapi import Depends, HTTPException, Response
@@ -18,12 +18,12 @@ pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # ---- Password hashing ------------------------------------------------------------
 def hash_password(pw: str) -> str:
     """Hash a plaintext password using bcrypt."""
-    return pwd_ctx.hash(pw)
+    return cast(str, pwd_ctx.hash(pw))
 
 
 def verify_password(pw: str, pw_hash: str) -> bool:
     """Verify a plaintext password against a bcrypt hash."""
-    return pwd_ctx.verify(pw, pw_hash)
+    return cast(bool, pwd_ctx.verify(pw, pw_hash))
 
 
 # ---- Settings helpers ------------------------------------------------------------
@@ -94,7 +94,7 @@ def decode_token(token: str) -> dict[str, Any]:
         HTTPException: If token is invalid or expired
     """
     try:
-        return jwt.decode(token, _SECRET, algorithms=[_ALG])
+        return cast(dict[str, Any], jwt.decode(token, _SECRET, algorithms=[_ALG]))
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 

@@ -30,10 +30,30 @@ else:
 
 # Canonical baseline RO status codes that must always exist
 CANONICAL_STATUS_CODES = [
-    {"status_code": "OPEN",  "label": "Open",             "role_owner": "advisor",    "color": "green"},
-    {"status_code": "DIAG",  "label": "Diagnosis",        "role_owner": "technician", "color": "yellow"},
-    {"status_code": "PARTS", "label": "Awaiting Parts",   "role_owner": "parts",      "color": "purple"},
-    {"status_code": "READY", "label": "Ready for Pickup", "role_owner": "advisor",    "color": "teal"},
+    {
+        "status_code": "OPEN",
+        "label": "Open",
+        "role_owner": "advisor",
+        "color": "green",
+    },
+    {
+        "status_code": "DIAG",
+        "label": "Diagnosis",
+        "role_owner": "technician",
+        "color": "yellow",
+    },
+    {
+        "status_code": "PARTS",
+        "label": "Awaiting Parts",
+        "role_owner": "parts",
+        "color": "purple",
+    },
+    {
+        "status_code": "READY",
+        "label": "Ready for Pickup",
+        "role_owner": "advisor",
+        "color": "teal",
+    },
 ]
 
 

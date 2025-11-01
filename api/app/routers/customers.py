@@ -1,9 +1,10 @@
-from app.core.db import get_db
-from app.models.customer import Customer
-from app.schemas.customer import CustomerCreate, CustomerOut
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from app.core.db import get_db
+from app.models.customer import Customer
+from app.schemas.customer import CustomerCreate, CustomerOut
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 

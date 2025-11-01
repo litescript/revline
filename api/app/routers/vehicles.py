@@ -1,9 +1,10 @@
-from app.core.db import get_db
-from app.models.vehicle import Vehicle
-from app.schemas.vehicle import VehicleCreate, VehicleOut
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from app.core.db import get_db
+from app.models.vehicle import Vehicle
+from app.schemas.vehicle import VehicleCreate, VehicleOut
 
 router = APIRouter(prefix="/vehicles", tags=["vehicles"])
 

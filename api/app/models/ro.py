@@ -45,8 +45,12 @@ class RepairOrder(Base):
         ForeignKey("vehicles.id", ondelete="SET NULL"), index=True
     )
 
-    opened_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    opened_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc), index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc), index=True
+    )
     is_waiter: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # relationships
