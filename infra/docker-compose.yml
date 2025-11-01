@@ -1,3 +1,4 @@
+name: revline
 services:
   db:
     image: postgres:16-alpine
@@ -76,8 +77,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    ports:
-      - "8000:8000"
+    # ports:
+    #   - "8000:8000"
     # Explicitly control process startup so we always serve FastAPI, not the module.
     entrypoint: ["uvicorn"]
     command:

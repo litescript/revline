@@ -9,6 +9,7 @@ logging.basicConfig(
     format="%(levelname)s: %(message)s"
 )
 
+from app.middleware.security import SecurityHeadersMiddleware
 from app.core.db import Base, engine, SessionLocal
 from app.core.seed_meta import seed_meta_if_empty
 from app.core.seed_active_ros import seed_active_ros_if_empty
@@ -51,6 +52,9 @@ async def lifespan(api: FastAPI):
 
 
 api = FastAPI(title="Revline API", lifespan=lifespan)
+
+# Security headers (apply first, before CORS)
+api.add_middleware(SecurityHeadersMiddleware)
 
 api.add_middleware(
     CORSMiddleware,

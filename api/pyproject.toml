@@ -78,3 +78,7 @@ ignore_missing_imports = true
 ############################
 [tool.bandit]
 skips = ["B101"]
+
+[tool.pytest.ini_options]
+markers = ["asyncio: mark test as asyncio-based"]
+asyncio_mode = "auto"

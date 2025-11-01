@@ -37,3 +37,5 @@ frontend/.vite-cache/
 /revline_atlas_fullsrc.tgz
 /revline_atlas_src.tgz
 /frontend/revline_atlas.tgz
+.env.*
+!*.example
