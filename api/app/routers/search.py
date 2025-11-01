@@ -1,9 +1,10 @@
-from app.core.db import get_db
-from app.models.customer import Customer
-from app.models.vehicle import Vehicle
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
+
+from app.core.db import get_db
+from app.models.customer import Customer
+from app.models.vehicle import Vehicle
 
 router = APIRouter(prefix="/search", tags=["search"])
 

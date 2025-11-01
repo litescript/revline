@@ -1,4 +1,3 @@
-from app.models.base import Base  # single source of truth for Base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 

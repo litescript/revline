@@ -5,6 +5,8 @@ import {
   networkErrorToAppError,
   responseToAppError,
 } from "@/lib/query/error";
+import { toast } from "@/lib/toast";
+import { attemptSilentRefresh, shouldRefreshToken } from "./refresh";
 
 const LS_KEY = "revline_token";
 const BASE = "/api/v1"; // single source of truth for backend base path
@@ -124,7 +126,24 @@ async function request<T>(
   path: string,
   init: RequestInit = {}
 ): Promise<T> {
-  ensureFreshToken();
+  // Check if token needs refresh before expiry
+  if (accessToken && shouldRefreshToken(expiresAt)) {
+    console.debug("Token near expiry, attempting silent refresh...");
+    const refreshed = await attemptSilentRefresh();
+
+    if (!refreshed) {
+      // Refresh failed - token expired or refresh token invalid
+      // The refresh handler already cleared session and toasted
+      throw {
+        status: 401,
+        code: "session_expired",
+        message: "Session expired",
+        retryable: false,
+      } as AppError;
+    }
+  }
+
+  ensureFreshToken(); // Final check
 
   const headers = new Headers(init.headers || {});
   headers.set("Accept", "application/json");
@@ -153,8 +172,12 @@ async function request<T>(
   }
 
   // Session expired or invalid credentials. Clear immediately.
-  if (res.status === 401) {
+  // Note: 419 is Laravel convention for expired tokens, included for compatibility
+  if (res.status === 401 || res.status === 419) {
     clearSession();
+
+    // Toast notification for user (basic implementation)
+    toast.error("Session expired. Please sign in again.");
   }
 
   // Non-2xx/3xx is an error

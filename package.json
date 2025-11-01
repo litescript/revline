@@ -6,6 +6,15 @@
     "sonner": "^2.0.7"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "eslint-plugin-es5": "^1.5.0",
     "openapi-typescript": "^7.9.1"
+  },
+  "scripts": {
+    "claude:agent": "node scripts/claude/run-agent.mjs",
+    "claude:type": "node scripts/claude/run-agent.mjs type-safety-enforcer",
+    "claude:auth": "node scripts/claude/run-agent.mjs auth-flow-auditor",
+    "claude:api": "node scripts/claude/run-agent.mjs api-layer-validator",
+    "claude:review": "node scripts/claude/run-agent.mjs sprint-reviewer"
   }
 }

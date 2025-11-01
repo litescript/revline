@@ -1,24 +1,25 @@
 # api/app/routers/ros.py
 from __future__ import annotations
-from typing import Any, Optional, Literal
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from typing import Any, Literal, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import (
-    select,
-    or_,
-    desc,
     String,
     cast,
+    desc,
     func,
+    or_,
+    select,
 )
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.models.ro import RepairOrder
 from app.models.customer import Customer
-from app.models.vehicle import Vehicle
 from app.models.meta import ROStatus
-from app.schemas.ro import ActiveRODTO, ROStatusMeta, RODetailDTO
+from app.models.ro import RepairOrder
+from app.models.vehicle import Vehicle
+from app.schemas.ro import ActiveRODTO, RODetailDTO, ROStatusMeta
 
 router = APIRouter(prefix="/ros", tags=["ros"])
 

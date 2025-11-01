@@ -1,10 +1,11 @@
+from fastapi import APIRouter, Depends
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
 from app.core.db import get_db
 from app.models.customer import Customer
 from app.models.ro import RepairOrder, ROStatusCode
 from app.models.vehicle import Vehicle
-from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 

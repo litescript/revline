@@ -1,7 +1,8 @@
+import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import logging
 
 # Configure logging early so seed and startup messages appear in docker logs
 logging.basicConfig(
@@ -9,14 +10,25 @@ logging.basicConfig(
     format="%(levelname)s: %(message)s"
 )
 
-from app.core.db import Base, engine, SessionLocal
-from app.core.seed_meta import seed_meta_if_empty
-from app.core.seed_active_ros import seed_active_ros_if_empty
-from app.core.startup_checks import run_all_startup_checks
-from app.routers import auth, customers, vehicles, ros, search, stats
-from app.routers import meta as meta_router
-
-import app.models.meta  # noqa: F401  # ensure models registered
+import app.models.meta  # noqa: E402, F401  # logging must be configured first
+from app.core.config import settings  # noqa: E402
+from app.core.db import SessionLocal, engine  # noqa: E402
+from app.core.rate_limit import init_rate_limiter  # noqa: E402
+from app.middleware.security import SecurityHeadersMiddleware  # noqa: E402
+from app.core.seed_active_ros import seed_active_ros_if_empty  # noqa: E402
+from app.core.seed_meta import seed_meta_if_empty  # noqa: E402
+from app.core.startup_checks import run_all_startup_checks  # noqa: E402
+from app.models.base import Base  # noqa: E402
+from app.routers import (  # noqa: E402
+    auth,
+    customers,
+    meta as meta_router,
+    ros,
+    search,
+    stats,
+    vehicles,
+)
+from app.services.redis import get_redis  # noqa: E402
 
 API_PREFIX = "/api/v1"
 
@@ -28,6 +40,10 @@ async def lifespan(api: FastAPI):
 
     # Run startup integrity checks
     run_all_startup_checks()
+
+    # Initialize rate limiter with Redis
+    redis_client = await get_redis()
+    init_rate_limiter(redis_client)
 
     db = SessionLocal()
     try:
@@ -52,9 +68,12 @@ async def lifespan(api: FastAPI):
 
 api = FastAPI(title="Revline API", lifespan=lifespan)
 
+# Security headers (apply first)
+api.add_middleware(SecurityHeadersMiddleware)
+
 api.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

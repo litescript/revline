@@ -1,0 +1,17 @@
+# Claude ignore list
+node_modules/
+dist/
+build/
+.venv/
+__pycache__/
+.env
+.env.*
+*.log
+*.sqlite3
+frontend/.vite/
+frontend/.turbo/
+frontend/.cache/
+infra/nginx/logs/
+infra/pg_data/
+infra/redis_data/
+.DS_Store

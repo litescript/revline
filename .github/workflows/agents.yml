@@ -1,0 +1,170 @@
+name: Agents (Auth Auditor)
+
+on:
+  pull_request:
+    paths:
+      - 'api/**'
+      - 'frontend/**'
+      - 'scripts/run-auth-audit.sh'
+      - '.claude/agents/auth-flow-auditor.md'
+      - '.github/workflows/agents.yml'
+
+jobs:
+  auth-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node and Python
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install jq and curl
+        run: sudo apt-get update && sudo apt-get install -y jq curl
+
+      - name: Boot minimal backend stack (db+api if available)
+        run: |
+          if [ -f infra/docker-compose.yml ]; then
+            docker compose -f infra/docker-compose.yml up -d --build
+          else
+            echo "No infra/docker-compose.yml found; expecting API at localhost:8000"
+          fi
+
+      - name: Wait for API
+        run: |
+          ATTEMPTS=90
+          until curl -sf http://localhost:8000/api/v1/health >/dev/null 2>&1 || [ $ATTEMPTS -eq 0 ]; do
+            ATTEMPTS=$((ATTEMPTS-1)); sleep 2
+          done
+          [ $ATTEMPTS -gt 0 ] || (echo "API not ready" && exit 1)
+
+      - name: Run Auth Auditor
+        env:
+          API_BASE: http://localhost:8000/api/v1
+        run: |
+          bash scripts/run-auth-audit.sh || echo "audit_exited=$?" >> $GITHUB_OUTPUT
+
+      - name: Upload Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-audit-report
+          path: reports/auth-audit-*.md
+          if-no-files-found: ignore
+
+      - name: Comment summary on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let latest = 'reports/auth-audit-latest.md';
+            let summary = 'Auth audit report generated.';
+            if (fs.existsSync(latest)) {
+              const txt = fs.readFileSync(latest, 'utf8');
+              const m = txt.match(/Summary:\s*(.*)$/m);
+              if (m) summary = 'Auth Auditor Summary: ' + m[1];
+            }
+            const body = [
+              '### 🤖 Auth Auditor',
+              '',
+              summary,
+              '',
+              '_Full report uploaded as an artifact in this workflow run._'
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+
+      - name: Fail on critical issues
+        run: |
+          if grep -q 'Summary: .* ❌' reports/auth-audit-latest.md; then
+            echo "Critical findings present"; exit 2; fi
+
+  sprint-reviewer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [auth-audit]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node and Python
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y jq curl
+
+      - name: Boot dev stack (if present)
+        run: |
+          if [ -f infra/docker-compose.yml ]; then
+            docker compose -f infra/docker-compose.yml up -d --build
+          else
+            echo "No compose; expecting API at localhost:8000"
+          fi
+
+      - name: Wait for API
+        run: |
+          ATTEMPTS=90
+          until curl -sf http://localhost:8000/api/v1/health >/dev/null 2>&1 || [ $ATTEMPTS -eq 0 ]; do
+            ATTEMPTS=$((ATTEMPTS-1)); sleep 2
+          done
+          [ $ATTEMPTS -gt 0 ] || (echo "API not ready" && exit 1)
+
+      - name: Run Sprint Reviewer
+        env:
+          API_BASE: http://localhost:8000/api/v1
+        run: |
+          bash scripts/run-sprint-review.sh || true
+
+      - name: Upload Sprint Review Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sprint-review-report
+          path: reports/sprint-review-*.md
+          if-no-files-found: ignore
+
+      - name: Comment summary on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let latest = 'reports/sprint-review-latest.md';
+            let summary = 'Sprint review report generated.';
+            if (fs.existsSync(latest)) {
+              const txt = fs.readFileSync(latest, 'utf8');
+              const m = txt.match(/Summary:\s*(.*)$/m);
+              if (m) summary = 'Sprint Reviewer Summary: ' + m[1];
+            }
+            const body = [
+              '### 🧪 Sprint Reviewer',
+              '',
+              summary,
+              '',
+              '_Full report uploaded as an artifact in this workflow run._'
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+
+      - name: Fail on critical issues
+        run: |
+          if grep -q 'Summary: .* ❌' reports/sprint-review-latest.md; then
+            echo "Critical findings present"; exit 2; fi
