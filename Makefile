@@ -34,3 +34,11 @@ prod-smoke:
 	$(MAKE) prod-preview
 	$(MAKE) header-check
 	$(MAKE) prod-down
+
+.PHONY: up
+up:
+\tdocker compose -f infra/docker-compose.yml up -d --build
+
+.PHONY: seeder-validate
+seeder-validate:
+\tbash scripts/validate_seeder_lockin.sh
