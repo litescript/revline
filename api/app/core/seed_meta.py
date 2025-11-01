@@ -1,9 +1,15 @@
-from pathlib import Path
+"""Seed metadata tables with initial data."""
+from __future__ import annotations
+
 import json
 import logging
-from sqlalchemy.orm import Session
-from sqlalchemy import select, func
+from pathlib import Path
+from typing import Any
+
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
 from app.models.meta import ROStatus, ServiceCategory
 
 logger = logging.getLogger(__name__)
@@ -31,12 +37,20 @@ CANONICAL_STATUS_CODES = [
 ]
 
 
-def _read_json(filename: str):
+def _read_json(filename: str) -> list[dict[str, Any]]:
+    """Read and parse a JSON file from the data directory."""
     fp = DATA_DIR / filename
-    return json.loads(fp.read_text(encoding="utf-8"))
+    content = fp.read_text(encoding="utf-8")
+    data = json.loads(content)
+    # Ensure we return a list for type safety
+    if not isinstance(data, list):
+        raise TypeError(f"Expected list in {filename}, got {type(data).__name__}")
+    return data
 
 
-def _upsert_ro_status(db: Session, status_code: str, label: str, role_owner: str, color: str) -> ROStatus:
+def _upsert_ro_status(
+    db: Session, status_code: str, label: str, role_owner: str, color: str
+) -> ROStatus:
     """
     Idempotently insert or update an ROStatus row by status_code.
     Returns the ROStatus instance (existing or newly created).
@@ -68,6 +82,7 @@ def _upsert_ro_status(db: Session, status_code: str, label: str, role_owner: str
 
 
 def seed_meta_if_empty(db: Session) -> None:
+    """Seed metadata tables if they are empty."""
     # RO statuses - always ensure canonical codes exist first
     for entry in CANONICAL_STATUS_CODES:
         _upsert_ro_status(
@@ -81,7 +96,10 @@ def seed_meta_if_empty(db: Session) -> None:
     logger.info("Upserted %d canonical RO status codes", len(CANONICAL_STATUS_CODES))
 
     # Load additional statuses from JSON if needed
-    if db.execute(select(func.count(ROStatus.id))).scalar_one() == len(CANONICAL_STATUS_CODES):
+    count_stmt = select(func.count(ROStatus.id))
+    current_count = db.execute(count_stmt).scalar_one()
+
+    if current_count == len(CANONICAL_STATUS_CODES):
         # Only canonical codes exist, load the full set
         rows = _read_json("ro_statuses.json")
         for row in rows:
@@ -96,7 +114,11 @@ def seed_meta_if_empty(db: Session) -> None:
         logger.info("Loaded additional RO statuses from ro_statuses.json")
 
     # Service categories
-    if db.execute(select(func.count(ServiceCategory.id))).scalar_one() == 0:
+    cat_count_stmt = select(func.count(ServiceCategory.id))
+    cat_count = db.execute(cat_count_stmt).scalar_one()
+
+    if cat_count == 0:
         rows = _read_json("service_categories.json")
         db.add_all([ServiceCategory(**r) for r in rows])
         db.commit()
+        logger.info("Loaded %d service categories", len(rows))

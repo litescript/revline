@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from typing import Any
 
 from app.models.base import Base
 
@@ -25,7 +26,10 @@ def check_duplicate_table_mappings() -> None:
     table_to_mappers: dict[str, list[str]] = defaultdict(list)
 
     for mapper in Base.registry.mappers:
-        table_name = mapper.persist_selectable.name
+        # persist_selectable can be a Table, Subquery, or other selectable
+        # For mapped classes, it's typically a Table with a .name attribute
+        selectable: Any = mapper.persist_selectable
+        table_name = getattr(selectable, "name", str(selectable))
         class_name = mapper.class_.__name__
         table_to_mappers[table_name].append(class_name)
 

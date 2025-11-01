@@ -1,24 +1,26 @@
+"""Authentication routes for user registration, login, and token management."""
+from __future__ import annotations
+
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
-from sqlalchemy.orm import Session
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from redis import asyncio as redis
-from typing import Optional, Literal, cast, Any
-from redis.exceptions import RedisError
+from sqlalchemy.orm import Session
 
-
+from ..core.config import settings
 from ..core.db import get_db
+from ..core.rate_limit import get_auth_limiter
 from ..core.security import (
+    clear_refresh_cookie,
     create_access,
     create_refresh,
     decode_token,
     hash_password,
-    verify_password,
     set_refresh_cookie,
-    clear_refresh_cookie,
     verify_access_token,
+    verify_password,
 )
-from ..core.config import settings
-from ..core.rate_limit import get_auth_limiter
 from ..models.user import User
 from ..schemas.user import UserCreate, UserLogin, UserOut
 from ..services.redis import get_redis
@@ -28,23 +30,8 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
 
-def _normalize_samesite(val: Optional[str]) -> Optional[Literal["lax", "strict", "none"]]:
-    if val is None:
-        return None
-    v = val.strip().lower()
-    if v in ("lax", "strict", "none"):
-        return cast(Literal["lax", "strict", "none"], v)
-    return "lax"
-
-
-def _normalize_domain(val: Optional[str]) -> Optional[str]:
-    if not val:
-        return None
-    v = val.strip()
-    return v or None
-
-
 def _access_max_age() -> int:
+    """Calculate access token max age in seconds."""
     if hasattr(settings, "access_token_ttl"):
         return int(settings.access_token_ttl.total_seconds())
     minutes = getattr(
@@ -54,6 +41,7 @@ def _access_max_age() -> int:
 
 
 def _refresh_max_age() -> int:
+    """Calculate refresh token max age in seconds."""
     if hasattr(settings, "refresh_token_ttl"):
         return int(settings.refresh_token_ttl.total_seconds())
     days = getattr(settings, "refresh_token_expire_days", 7)
@@ -66,6 +54,20 @@ async def register(
     db: Session = Depends(get_db),
     _limiter: None = Depends(get_auth_limiter),
 ) -> UserOut:
+    """
+    Register a new user account.
+
+    Args:
+        payload: User registration data
+        db: Database session
+        _limiter: Rate limiter dependency
+
+    Returns:
+        Created user information
+
+    Raises:
+        HTTPException: If email is already registered
+    """
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -87,9 +89,25 @@ async def login(
     payload: UserLogin,
     response: Response,
     db: Session = Depends(get_db),
-    r: redis.Redis = Depends(get_redis),
+    r: redis.Redis[str] = Depends(get_redis),
     _limiter: None = Depends(get_auth_limiter),
 ) -> dict[str, Any]:
+    """
+    Authenticate user and issue tokens.
+
+    Args:
+        payload: Login credentials
+        response: FastAPI response for setting cookies
+        db: Database session
+        r: Redis client for refresh token storage
+        _limiter: Rate limiter dependency
+
+    Returns:
+        Access token and metadata
+
+    Raises:
+        HTTPException: If credentials are invalid
+    """
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -117,6 +135,19 @@ def me(
     payload: dict[str, Any] = Depends(verify_access_token),
     db: Session = Depends(get_db),
 ) -> UserOut:
+    """
+    Get current authenticated user information.
+
+    Args:
+        payload: Decoded JWT token payload
+        db: Database session
+
+    Returns:
+        Current user information
+
+    Raises:
+        HTTPException: If token is invalid or user not found
+    """
     sub = payload.get("sub")
     if not sub:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -130,31 +161,70 @@ def me(
 
 @router.post("/refresh")
 async def refresh(
-    request: Request, response: Response, r: redis.Redis = Depends(get_redis)
+    request: Request,
+    response: Response,
+    r: redis.Redis[str] = Depends(get_redis),
 ) -> dict[str, Any]:
+    """
+    Refresh access token using refresh token from cookie.
+
+    Args:
+        request: FastAPI request for reading cookies
+        response: FastAPI response for setting new cookies
+        r: Redis client for token management
+
+    Returns:
+        New access token and metadata
+
+    Raises:
+        HTTPException: If refresh token is missing or invalid
+    """
     cookie = request.cookies.get("revline_refresh")
     if not cookie:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No refresh cookie")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="No refresh cookie"
+        )
+
     payload = decode_token(cookie)
     sub = payload.get("sub")
     if not sub:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
+
     old_jti = payload.get("jti")
     if old_jti:
         await r.delete(f"refresh:{old_jti}")
+
     access_token, _ = create_access(sub)
     refresh_token, refresh_jti = create_refresh(sub)
     await r.setex(f"refresh:{refresh_jti}", _refresh_max_age(), sub)
     set_refresh_cookie(response, refresh_token)
-    return {"access_token": access_token, "token_type": "bearer", "expires_in": _access_max_age()}
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in": _access_max_age(),
+    }
 
 
 @router.post("/logout")
 async def logout(
     request: Request,
     response: Response,
-    r: redis.Redis = Depends(get_redis),
+    r: redis.Redis[str] = Depends(get_redis),
 ) -> dict[str, bool]:
+    """
+    Logout user by revoking refresh token and clearing cookie.
+
+    Args:
+        request: FastAPI request for reading cookies
+        response: FastAPI response for clearing cookies
+        r: Redis client for token revocation
+
+    Returns:
+        Success status
+    """
     cookie = request.cookies.get("revline_refresh")
 
     if cookie:
@@ -169,7 +239,9 @@ async def logout(
                 except Exception as e:
                     # We failed to delete the token from Redis. Not fatal for logout,
                     # but we should know about it.
-                    logger.warning("Failed to revoke refresh token %s during logout: %s", jti, e)
+                    logger.warning(
+                        "Failed to revoke refresh token %s during logout: %s", jti, e
+                    )
 
         except Exception as e:
             # token couldn't be decoded / malformed / expired / tampered

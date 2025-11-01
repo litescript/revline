@@ -1,13 +1,19 @@
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+"""Application configuration loaded from environment variables."""
+from __future__ import annotations
+
 from datetime import timedelta
 from pathlib import Path
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _API_DIR = _REPO_ROOT / "api"
 
 
 class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
+
     # 1. Core database + JWT
     database_url: str = Field(..., alias="DATABASE_URL")
     jwt_secret: str = Field(..., alias="JWT_SECRET")
@@ -27,10 +33,12 @@ class Settings(BaseSettings):
     # 4. Derived helpers for timedeltas
     @property
     def access_token_ttl(self) -> timedelta:
+        """Get access token TTL as timedelta."""
         return timedelta(minutes=self.jwt_expire_minutes)
 
     @property
     def refresh_token_ttl(self) -> timedelta:
+        """Get refresh token TTL as timedelta."""
         return timedelta(days=self.refresh_token_expire_days)
 
     # 5. Pydantic config: load .env automatically
@@ -45,4 +53,6 @@ class Settings(BaseSettings):
     )
 
 
+# Global settings instance
+# Type ignore needed because Pydantic loads required fields from environment
 settings = Settings()  # type: ignore[call-arg]

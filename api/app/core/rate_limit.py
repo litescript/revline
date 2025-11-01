@@ -1,18 +1,20 @@
 """Redis-backed rate limiting for auth endpoints."""
 from __future__ import annotations
+
 import logging
-from typing import Optional
-from fastapi import Request, HTTPException, status
+
+from fastapi import HTTPException, Request, status
 from redis import asyncio as redis
 from redis.exceptions import RedisError
+
 from .config import settings
 
 logger = logging.getLogger(__name__)
 
-_redis_client: Optional[redis.Redis] = None
+_redis_client: redis.Redis[str] | None = None
 
 
-def init_rate_limiter(r: redis.Redis) -> None:
+def init_rate_limiter(r: redis.Redis[str]) -> None:
     """Initialize rate limiter with Redis client."""
     global _redis_client
     _redis_client = r
@@ -25,7 +27,10 @@ def get_client_ip(request: Request) -> str:
     if forwarded:
         # Take first IP in chain (original client)
         return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    # request.client can be None in some contexts (e.g., testing)
+    if request.client:
+        return request.client.host
+    return "unknown"
 
 
 class RateLimiter:
@@ -34,11 +39,14 @@ class RateLimiter:
 
     Usage in route:
         @router.post("/auth/login")
-        async def login(request: Request, limiter: None = Depends(RateLimiter(times=5, seconds=60))):
+        async def login(
+            request: Request,
+            limiter: None = Depends(RateLimiter(times=5, seconds=60))
+        ):
             ...
     """
 
-    def __init__(self, times: int = 5, seconds: int = 60):
+    def __init__(self, times: int = 5, seconds: int = 60) -> None:
         """
         Configure rate limit.
 
@@ -87,8 +95,6 @@ class RateLimiter:
             return
 
 
-# Default rate limiters for auth endpoints
-# Configurable via environment or override in routes
 def get_auth_limiter() -> RateLimiter:
     """Get rate limiter configured for auth endpoints (default 5 req/60s)."""
     times = getattr(settings, "auth_rate_limit_times", 5)
