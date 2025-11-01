@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     cors_origins: str = Field("http://localhost:5173", alias="CORS_ORIGINS")
     redis_url: str = Field("redis://redis:6379/0", alias="REDIS_URL")
 
+    # Sprint 6C: Browser isolation + token family
+    csp_mode: str = Field("strict", alias="CSP_MODE")  # strict|permissive|off
+    coop_coep_enabled: bool = Field(False, alias="COOP_COEP_ENABLED")
+    auth_refresh_strategy: str = Field("nuclear", alias="AUTH_REFRESH_STRATEGY")  # nuclear|family
+    token_family_ttl_days: int = Field(30, alias="TOKEN_FAMILY_TTL_DAYS")
+
     # 4. Derived helpers for timedeltas
     @property
     def access_token_ttl(self) -> timedelta:

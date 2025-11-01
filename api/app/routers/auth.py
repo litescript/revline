@@ -7,6 +7,7 @@ from redis.exceptions import RedisError
 
 
 from ..core.db import get_db
+from ..core.token_family import TokenFamily
 from ..core.security import (
     create_access,
     create_refresh,
@@ -90,15 +91,26 @@ async def login(
     access_token, _ = create_access(str(user.id))
     refresh_token, refresh_jti = create_refresh(str(user.id))
 
-    ttl_val = getattr(settings, "refresh_token_ttl", 7 * 24 * 3600)
-    # if it's a timedelta, convert to seconds
-    if hasattr(ttl_val, "total_seconds"):
-        refresh_ttl = int(ttl_val.total_seconds())
-    else:
-        # assume it's already numeric (int/str)
-        refresh_ttl = int(ttl_val)
+    # Sprint 6C: Token family tracking
+    if settings.auth_refresh_strategy == "family":
+        # Create new family for this login session
+        family_manager = TokenFamily(r)
+        family_id = await family_manager.create_family(str(user.id))
 
-    await r.setex(f"refresh:{refresh_jti}", refresh_ttl, str(user.id))
+        # Store token with family association
+        ttl = _refresh_max_age()
+        await family_manager.store_refresh_token(refresh_jti, family_id, str(user.id), ttl)
+    else:
+        # Nuclear strategy: simple key-value storage
+        ttl_val = getattr(settings, "refresh_token_ttl", 7 * 24 * 3600)
+        # if it's a timedelta, convert to seconds
+        if hasattr(ttl_val, "total_seconds"):
+            refresh_ttl = int(ttl_val.total_seconds())
+        else:
+            # assume it's already numeric (int/str)
+            refresh_ttl = int(ttl_val)
+
+        await r.setex(f"refresh:{refresh_jti}", refresh_ttl, str(user.id))
 
     set_refresh_cookie(response, refresh_token)
     access_ttl = _access_max_age()
@@ -138,18 +150,79 @@ async def refresh(
     cookie = request.cookies.get("revline_refresh")
     if not cookie:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No refresh cookie")
+
     payload = decode_token(cookie)
     sub = payload.get("sub")
     if not sub:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
     old_jti = payload.get("jti")
-    if old_jti:
-        await r.delete(f"refresh:{old_jti}")
+    if not old_jti:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    # Sprint 6C: Branch on refresh strategy
+    if settings.auth_refresh_strategy == "family":
+        await _refresh_family_strategy(old_jti, sub, response, r)
+    else:
+        await _refresh_nuclear_strategy(old_jti, sub, response, r)
+
     access_token, _ = create_access(sub)
+    return {"access_token": access_token, "token_type": "bearer", "expires_in": _access_max_age()}
+
+
+async def _refresh_family_strategy(
+    old_jti: str, sub: str, response: Response, r: redis.Redis
+) -> None:
+    """
+    Handle refresh using family strategy.
+
+    On token reuse, revoke only the affected family (not all user sessions).
+    """
+    family_manager = TokenFamily(r)
+
+    # Get family for old token
+    token_data = await family_manager.get_token_family(old_jti)
+
+    if not token_data:
+        # Token not found or expired → possible reuse
+        logger.warning("Refresh token reuse detected for user %s (jti: %s)", sub, old_jti)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token already used or revoked",
+        )
+
+    user_id, family_id = token_data
+
+    # Verify user match
+    if user_id != sub:
+        logger.error("User ID mismatch: stored=%s, claim=%s", user_id, sub)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    # Token is valid → delete old one and issue new one in same family
+    await family_manager.delete_token(old_jti)
+
+    refresh_token, refresh_jti = create_refresh(sub)
+    ttl = _refresh_max_age()
+
+    # Store new token in same family
+    await family_manager.store_refresh_token(refresh_jti, family_id, sub, ttl)
+    set_refresh_cookie(response, refresh_token)
+
+
+async def _refresh_nuclear_strategy(
+    old_jti: str, sub: str, response: Response, r: redis.Redis
+) -> None:
+    """
+    Handle refresh using nuclear strategy.
+
+    On token reuse, log warning but don't revoke all sessions (current simple behavior).
+    """
+    # Simple delete and reissue (original behavior)
+    await r.delete(f"refresh:{old_jti}")
+
     refresh_token, refresh_jti = create_refresh(sub)
     await r.setex(f"refresh:{refresh_jti}", _refresh_max_age(), sub)
     set_refresh_cookie(response, refresh_token)
-    return {"access_token": access_token, "token_type": "bearer", "expires_in": _access_max_age()}
 
 
 @router.post("/logout")
