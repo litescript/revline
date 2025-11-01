@@ -8,6 +8,7 @@ from typing import Any, cast
 import jwt
 from fastapi import Depends, HTTPException, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jwt.exceptions import InvalidAudienceError, InvalidIssuerError
 from passlib.context import CryptContext
 
 from .config import settings
@@ -44,6 +45,7 @@ _REFRESH_TTL: int = (
     else int(timedelta(days=_REFRESH_DAYS).total_seconds())
 )
 _SECRET: str = settings.jwt_secret
+_LEEWAY: int = 120  # ±2 minutes clock skew tolerance
 
 
 # ---- JWT helpers -----------------------------------------------------------------
@@ -76,6 +78,12 @@ def _create_token(
         "iat": now,
         "exp": now + int(ttl_seconds),
     }
+    # Add optional iss/aud claims if configured
+    if settings.jwt_issuer:
+        payload["iss"] = settings.jwt_issuer
+    if settings.jwt_audience:
+        payload["aud"] = settings.jwt_audience
+
     token = jwt.encode(payload, _SECRET, algorithm=_ALG)
     return token, jti
 
@@ -93,8 +101,23 @@ def decode_token(token: str) -> dict[str, Any]:
     Raises:
         HTTPException: If token is invalid or expired
     """
+    decode_opts: dict[str, Any] = {
+        "algorithms": [_ALG],
+        "leeway": _LEEWAY,
+    }
+
+    # Add optional iss/aud validation if configured
+    if settings.jwt_issuer:
+        decode_opts["issuer"] = settings.jwt_issuer
+    if settings.jwt_audience:
+        decode_opts["audience"] = settings.jwt_audience
+
     try:
-        return cast(dict[str, Any], jwt.decode(token, _SECRET, algorithms=[_ALG]))
+        return cast(dict[str, Any], jwt.decode(token, _SECRET, **decode_opts))
+    except InvalidIssuerError:
+        raise HTTPException(status_code=401, detail="Invalid token issuer")
+    except InvalidAudienceError:
+        raise HTTPException(status_code=401, detail="Invalid token audience")
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 

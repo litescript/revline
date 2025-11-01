@@ -11,8 +11,10 @@ logging.basicConfig(
 )
 
 import app.models.meta  # noqa: E402, F401  # logging must be configured first
+from app.core.config import settings  # noqa: E402
 from app.core.db import SessionLocal, engine  # noqa: E402
 from app.core.rate_limit import init_rate_limiter  # noqa: E402
+from app.middleware.security import SecurityHeadersMiddleware  # noqa: E402
 from app.core.seed_active_ros import seed_active_ros_if_empty  # noqa: E402
 from app.core.seed_meta import seed_meta_if_empty  # noqa: E402
 from app.core.startup_checks import run_all_startup_checks  # noqa: E402
@@ -66,9 +68,12 @@ async def lifespan(api: FastAPI):
 
 api = FastAPI(title="Revline API", lifespan=lifespan)
 
+# Security headers (apply first)
+api.add_middleware(SecurityHeadersMiddleware)
+
 api.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

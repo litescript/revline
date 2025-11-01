@@ -5,9 +5,12 @@ Run these checks during FastAPI lifespan to catch configuration errors early.
 from __future__ import annotations
 
 import logging
+import os
+import sys
 from collections import defaultdict
 from typing import Any
 
+from app.core.config import settings
 from app.models.base import Base
 
 logger = logging.getLogger(__name__)
@@ -58,6 +61,32 @@ def check_duplicate_table_mappings() -> None:
     )
 
 
+def check_jwt_production_config() -> None:
+    """
+    Ensure JWT issuer/audience are set in production.
+
+    Fails fast if ENV=production and either JWT_ISSUER or JWT_AUDIENCE missing.
+    """
+    env = os.getenv("ENV", "development").lower()
+
+    if env == "production":
+        if not settings.jwt_issuer:
+            logger.error("❌ JWT_ISSUER is required in production")
+            sys.exit(1)
+
+        if not settings.jwt_audience:
+            logger.error("❌ JWT_AUDIENCE is required in production")
+            sys.exit(1)
+
+        logger.info(
+            "✓ JWT production config validated (iss=%s, aud=%s)",
+            settings.jwt_issuer,
+            settings.jwt_audience,
+        )
+    else:
+        logger.info("✓ JWT config optional in %s environment", env)
+
+
 def run_all_startup_checks() -> None:
     """
     Execute all startup integrity checks.
@@ -65,4 +94,5 @@ def run_all_startup_checks() -> None:
     """
     logger.info("Running startup integrity checks...")
     check_duplicate_table_mappings()
+    check_jwt_production_config()
     logger.info("All startup checks passed")

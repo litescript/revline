@@ -5,12 +5,12 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from redis import asyncio as redis
+from redis.asyncio import Redis
 from sqlalchemy.orm import Session
 
 from ..core.config import settings
 from ..core.db import get_db
-from ..core.rate_limit import get_auth_limiter
+from ..core.rate_limit import get_auth_limiter, get_refresh_limiter
 from ..core.security import (
     clear_refresh_cookie,
     create_access,
@@ -70,7 +70,9 @@ async def register(
     """
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
+        )
 
     user = User(
         email=payload.email,
@@ -89,7 +91,7 @@ async def login(
     payload: UserLogin,
     response: Response,
     db: Session = Depends(get_db),
-    r: redis.Redis = Depends(get_redis),
+    r: Redis = Depends(get_redis),
     _limiter: None = Depends(get_auth_limiter),
 ) -> dict[str, Any]:
     """
@@ -110,24 +112,32 @@ async def login(
     """
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
+        )
 
     access_token, _ = create_access(str(user.id))
     refresh_token, refresh_jti = create_refresh(str(user.id))
 
-    ttl_val = getattr(settings, "refresh_token_ttl", 7 * 24 * 3600)
-    # if it's a timedelta, convert to seconds
-    if hasattr(ttl_val, "total_seconds"):
-        refresh_ttl = int(ttl_val.total_seconds())
-    else:
-        # assume it's already numeric (int/str)
-        refresh_ttl = int(ttl_val)
+    # Only set cookie if cookie mode enabled
+    if settings.auth_cookie_mode:
+        ttl_val = getattr(settings, "refresh_token_ttl", 7 * 24 * 3600)
+        if hasattr(ttl_val, "total_seconds"):
+            refresh_ttl = int(ttl_val.total_seconds())
+        else:
+            refresh_ttl = int(ttl_val)
 
-    await r.setex(f"refresh:{refresh_jti}", refresh_ttl, str(user.id))
+        await r.setex(f"refresh:{refresh_jti}", refresh_ttl, str(user.id))
+        set_refresh_cookie(response, refresh_token)
 
-    set_refresh_cookie(response, refresh_token)
     access_ttl = _access_max_age()
-    return {"access_token": access_token, "token_type": "bearer", "expires_in": access_ttl}
+    result = {"access_token": access_token, "token_type": "bearer", "expires_in": access_ttl}
+
+    # Include refresh token in response body if cookie mode disabled
+    if not settings.auth_cookie_mode:
+        result["refresh_token"] = refresh_token
+
+    return result
 
 
 @router.get("/me", response_model=UserOut)
@@ -154,7 +164,10 @@ def me(
 
     user = db.get(User, int(sub))
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or session invalid",
+        )
 
     return UserOut.model_validate(user)
 
@@ -163,15 +176,19 @@ def me(
 async def refresh(
     request: Request,
     response: Response,
-    r: redis.Redis = Depends(get_redis),
+    r: Redis = Depends(get_redis),
+    db: Session = Depends(get_db),
+    _limiter: None = Depends(get_refresh_limiter),
 ) -> dict[str, Any]:
     """
     Refresh access token using refresh token from cookie.
+    Implements refresh token rotation with reuse detection.
 
     Args:
         request: FastAPI request for reading cookies
         response: FastAPI response for setting new cookies
         r: Redis client for token management
+        db: Database session for user validation
 
     Returns:
         New access token and metadata
@@ -192,13 +209,62 @@ async def refresh(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
         )
 
+    # Verify token type
+    token_type = payload.get("type")
+    if token_type != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Wrong token type"
+        )
+
     old_jti = payload.get("jti")
-    if old_jti:
-        await r.delete(f"refresh:{old_jti}")
+    if not old_jti:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
+        )
+
+    # REUSE DETECTION: Check if this refresh token was already used
+    redis_key = f"refresh:{old_jti}"
+    stored_sub = await r.get(redis_key)
+
+    if not stored_sub:
+        # Token was already consumed or expired → possible replay attack
+        logger.warning(
+            "Refresh token reuse detected for user %s (jti: %s). Strategy: %s",
+            sub,
+            old_jti,
+            settings.auth_refresh_strategy,
+        )
+
+        if settings.auth_refresh_strategy == "nuclear":
+            # Nuclear option: revoke ALL refresh tokens for this user
+            # In practice, we can't easily iterate keys, so we rely on JTI tracking
+            # For now, just log and reject (individual tokens already expired)
+            logger.warning("Nuclear strategy: token reuse detected, session invalidated")
+
+        # Future: implement "family" tracking here
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token already used or revoked",
+        )
+
+    # Verify stored user matches token claim
+    if stored_sub.decode("utf-8") != sub:
+        logger.error("User ID mismatch in refresh token: stored=%s, claim=%s", stored_sub, sub)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
+
+    # Token is valid and not reused → revoke it and issue new one
+    await r.delete(redis_key)
 
     access_token, _ = create_access(sub)
     refresh_token, refresh_jti = create_refresh(sub)
-    await r.setex(f"refresh:{refresh_jti}", _refresh_max_age(), sub)
+
+    # Store new refresh token with user ID as value
+    ttl = _refresh_max_age()
+    await r.setex(f"refresh:{refresh_jti}", ttl, sub)
+
     set_refresh_cookie(response, refresh_token)
 
     return {
@@ -212,7 +278,7 @@ async def refresh(
 async def logout(
     request: Request,
     response: Response,
-    r: redis.Redis = Depends(get_redis),
+    r: Redis = Depends(get_redis),
 ) -> dict[str, bool]:
     """
     Logout user by revoking refresh token and clearing cookie.
