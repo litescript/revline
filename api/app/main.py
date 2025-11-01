@@ -1,10 +1,18 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import logging
+
+# Configure logging early so seed and startup messages appear in docker logs
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s: %(message)s"
+)
 
 from app.core.db import Base, engine, SessionLocal
 from app.core.seed_meta import seed_meta_if_empty
 from app.core.seed_active_ros import seed_active_ros_if_empty
+from app.core.startup_checks import run_all_startup_checks
 from app.routers import auth, customers, vehicles, ros, search, stats
 from app.routers import meta as meta_router
 
@@ -17,10 +25,25 @@ API_PREFIX = "/api/v1"
 async def lifespan(api: FastAPI):
     """Create tables and seed demo data for dev environments."""
     Base.metadata.create_all(bind=engine)
+
+    # Run startup integrity checks
+    run_all_startup_checks()
+
     db = SessionLocal()
     try:
-        seed_meta_if_empty(db)
-        seed_active_ros_if_empty(db)
+        # Meta seed — safe but isolated from Active RO seed
+        try:
+            seed_meta_if_empty(db)
+        except Exception as e:
+            logging.getLogger(__name__).exception("Meta seeding failed; continuing startup: %s", e)
+
+        # Active RO seed — now idempotent, but still guarded for safety
+        try:
+            seed_active_ros_if_empty(db)
+        except Exception as e:
+            logging.getLogger(__name__).exception(
+                "Active RO seeding failed; continuing startup: %s", e
+            )
     finally:
         db.close()
     yield

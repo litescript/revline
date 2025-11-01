@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String
@@ -11,6 +11,22 @@ from .base import Base
 if TYPE_CHECKING:  # type-only imports; avoids circulars at runtime
     from app.models.customer import Customer
     from app.models.vehicle import Vehicle
+
+
+class ROStatusCode:
+    """
+    Constants for RepairOrder status values.
+    Used for consistency across seeding, queries, and business logic.
+    """
+    OPEN = "OPEN"
+    DIAG = "DIAG"
+    PARTS = "PARTS"
+    READY = "READY"
+
+    @classmethod
+    def all_statuses(cls) -> list[str]:
+        """Return all valid status codes as a list."""
+        return [cls.OPEN, cls.DIAG, cls.PARTS, cls.READY]
 
 
 class RepairOrder(Base):
@@ -29,8 +45,8 @@ class RepairOrder(Base):
         ForeignKey("vehicles.id", ondelete="SET NULL"), index=True
     )
 
-    opened_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    opened_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     is_waiter: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # relationships

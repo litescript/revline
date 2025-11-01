@@ -8,7 +8,7 @@ from .base import Base
 from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
-    from .repair_order import RepairOrder
+    from .ro import RepairOrder
     from .vehicle import Vehicle
 
 

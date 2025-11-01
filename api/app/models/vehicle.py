@@ -10,7 +10,7 @@ from .base import Base
 if TYPE_CHECKING:
     # vehicle.py defines Vehicle, so DO NOT import Vehicle here
     from .customer import Customer
-    from .repair_order import RepairOrder
+    from .ro import RepairOrder
 
 
 class Vehicle(Base):
