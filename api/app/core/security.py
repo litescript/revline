@@ -3,7 +3,8 @@ from typing import Any, Optional, Tuple
 import uuid
 import jwt
 from passlib.context import CryptContext
-from fastapi import Response, HTTPException
+from fastapi import Response, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from .config import settings
 
@@ -110,3 +111,39 @@ def create_access_token(sub: str) -> str:
 
 def decode_access_token(token: str) -> dict[str, Any]:
     return decode_token(token)
+
+
+# ---- FastAPI Security Dependencies -----------------------------------------------
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def get_bearer_token(creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)) -> str:
+    """Extract and return the raw bearer token from Authorization header."""
+    if not creds:
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    return creds.credentials
+
+
+def verify_access_token(token: str = Depends(get_bearer_token)) -> dict[str, Any]:
+    """
+    Decode and validate an access token.
+
+    Returns:
+        Token payload with validated claims.
+
+    Raises:
+        HTTPException 401 if token is invalid, expired, or wrong type.
+    """
+    payload = decode_token(token)
+
+    # Verify this is an access token (not refresh)
+    token_type = payload.get("type")
+    if token_type is not None and token_type != "access":
+        raise HTTPException(status_code=401, detail="Wrong token type")
+
+    # Verify sub claim exists
+    sub = payload.get("sub")
+    if not sub:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    return payload

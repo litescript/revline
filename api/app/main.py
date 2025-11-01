@@ -13,6 +13,8 @@ from app.core.db import Base, engine, SessionLocal
 from app.core.seed_meta import seed_meta_if_empty
 from app.core.seed_active_ros import seed_active_ros_if_empty
 from app.core.startup_checks import run_all_startup_checks
+from app.core.rate_limit import init_rate_limiter
+from app.services.redis import get_redis
 from app.routers import auth, customers, vehicles, ros, search, stats
 from app.routers import meta as meta_router
 
@@ -28,6 +30,10 @@ async def lifespan(api: FastAPI):
 
     # Run startup integrity checks
     run_all_startup_checks()
+
+    # Initialize rate limiter with Redis
+    redis_client = await get_redis()
+    init_rate_limiter(redis_client)
 
     db = SessionLocal()
     try:

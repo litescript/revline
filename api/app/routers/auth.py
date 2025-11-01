@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from sqlalchemy.orm import Session
 from redis import asyncio as redis
 from typing import Optional, Literal, cast, Any
@@ -15,8 +15,10 @@ from ..core.security import (
     verify_password,
     set_refresh_cookie,
     clear_refresh_cookie,
+    verify_access_token,
 )
 from ..core.config import settings
+from ..core.rate_limit import get_auth_limiter
 from ..models.user import User
 from ..schemas.user import UserCreate, UserLogin, UserOut
 from ..services.redis import get_redis
@@ -59,7 +61,11 @@ def _refresh_max_age() -> int:
 
 
 @router.post("/register", response_model=UserOut, status_code=201)
-def register(payload: UserCreate, db: Session = Depends(get_db)) -> UserOut:
+async def register(
+    payload: UserCreate,
+    db: Session = Depends(get_db),
+    _limiter: None = Depends(get_auth_limiter),
+) -> UserOut:
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -82,6 +88,7 @@ async def login(
     response: Response,
     db: Session = Depends(get_db),
     r: redis.Redis = Depends(get_redis),
+    _limiter: None = Depends(get_auth_limiter),
 ) -> dict[str, Any]:
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.password_hash):
@@ -107,19 +114,9 @@ async def login(
 
 @router.get("/me", response_model=UserOut)
 def me(
-    authorization: Optional[str] = Header(None),
+    payload: dict[str, Any] = Depends(verify_access_token),
     db: Session = Depends(get_db),
 ) -> UserOut:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Missing bearer token")
-
-    token = authorization.split(" ", 1)[1].strip()
-    payload = decode_token(token)
-
-    token_type = payload.get("type")
-    if token_type is not None and token_type != "access":
-        raise HTTPException(status_code=401, detail="Wrong token type")
-
     sub = payload.get("sub")
     if not sub:
         raise HTTPException(status_code=401, detail="Invalid token")
