@@ -12,11 +12,11 @@ logging.basicConfig(
 
 import app.models.meta  # noqa: E402, F401  # logging must be configured first
 from app.core.db import SessionLocal, engine  # noqa: E402
-from app.models.base import Base  # noqa: E402
 from app.core.rate_limit import init_rate_limiter  # noqa: E402
 from app.core.seed_active_ros import seed_active_ros_if_empty  # noqa: E402
 from app.core.seed_meta import seed_meta_if_empty  # noqa: E402
 from app.core.startup_checks import run_all_startup_checks  # noqa: E402
+from app.models.base import Base  # noqa: E402
 from app.routers import (  # noqa: E402
     auth,
     customers,

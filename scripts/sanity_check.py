@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import json, sys, urllib.request
+import json
+import sys
+import urllib.request
 
 API_BASE = "http://localhost:8000/api/v1"
 
